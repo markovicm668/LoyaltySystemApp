@@ -11,9 +11,11 @@ import {
   Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
-// Define the base URL for API calls
-const API_URL = 'http://192.168.1.163:5001/api/users';
+const API_URL = Constants.expoConfig.extra.apiUrl + "/api/users";
+
+console.log(API_URL);
 
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');

@@ -11,10 +11,11 @@ import {
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg'; // Kept for now, value needs review
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
-// Make sure this is your actual computer's IP on your local network
-// when testing with Expo Go on a physical device.
-const API_URL = 'http://192.168.1.163:5001'; // Ensure this is correct
+const API_URL = Constants.expoConfig.extra.apiUrl + "/api/users";
+
+console.log(API_URL);
 
 const HomeScreen = ({ navigation }) => {
   const [user, setUser] = useState(null);
