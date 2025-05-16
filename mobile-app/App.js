@@ -6,7 +6,12 @@ import { StatusBar, LogBox } from 'react-native';
 // Import screens
 import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
-import HomeScreen from './screens/HomeScreen';
+import HomeScreen from './screens/HomeScreen';// Example in your Navigator
+import DiscoverCampaignsScreen from './screens/DiscoverCampaignsScreen';
+
+// ...
+
+// ...
 // import LoyaltyStatusScreen from './screens/LoyaltyStatusScreen';
 // import HistoryScreen from './screens/HistoryScreen';
 
@@ -25,6 +30,11 @@ const App = () => {
         <Stack.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
         {/* <Stack.Screen name="LoyaltyStatus" component={LoyaltyStatusScreen} options={{ title: 'Your Loyalty Status' }} />
         <Stack.Screen name="History" component={HistoryScreen} options={{ title: 'Stamp History' }} /> */}
+        <Stack.Screen
+          name="DiscoverCampaigns"
+          component={DiscoverCampaignsScreen}
+          options={{ title: 'Discover Programs' }} // Or set title in the screen itself
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

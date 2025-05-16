@@ -8,8 +8,8 @@ const multer = require('multer');
 const path = require('path');
 const qrcode = require('qrcode');
 const geolib = require('geolib');
+const crypto = require('crypto');
 
-// Load environment variables
 dotenv.config();
 
 if (!process.env.JWT_SECRET) {
@@ -137,11 +137,9 @@ const businessSchema = new mongoose.Schema({
     enum: ['Restaurant', 'Cafe', 'Retail', 'Beauty', 'Health', 'Entertainment', 'Other']
   },
   address: {
-    street: String,
-    city: String,
-    state: String,
-    zipCode: String,
-    country: String
+    type: String,
+    required: true, // Or false if address can be optional initially
+    trim: true
   },
   location: {
     type: {
@@ -151,7 +149,8 @@ const businessSchema = new mongoose.Schema({
     },
     coordinates: {
       type: [Number], // [longitude, latitude]
-      required: true
+      default: [0,0],
+      required: false
     }
   },
   contactInfo: {
@@ -738,43 +737,78 @@ const toggleFavoriteBusiness = async (req, res) => {
 const registerBusiness = async (req, res) => {
   try {
     const {
-      name,
-      category,
-      address,
-      coordinates,
-      contactInfo,
-      description,
-      businessHours
+      name,          // Business name from frontend
+      category,      // Category from frontend
+      address,       // Address string from frontend
+      stampsRequired // Number of stamps from frontend (came as stampsCount)
+      // Optional: If you decide to send coordinates from frontend in the future:
+      // coordinates // Expected as [longitude, latitude]
     } = req.body;
+
+    // Basic validation for required fields from frontend
+    if (!name || !category || !address || !stampsRequired) {
+      return res.status(400).json({ message: 'Missing required business fields: name, category, address, or stampsRequired.' });
+    }
+    if (isNaN(parseInt(stampsRequired)) || parseInt(stampsRequired) <= 0) {
+      return res.status(400).json({ message: 'Stamps required must be a positive number.' });
+    }
 
     // Generate API key
     const apiKey = crypto.randomBytes(16).toString('hex');
 
-    const business = await Business.create({
+    // Create the Business
+    // This assumes you've modified businessSchema.address to type: String
+    // And businessSchema.location.coordinates has a default or is made optional.
+    const businessData = {
       name,
       category,
-      address,
+      address: address, // Assumes schema.address is now type: String
       location: {
         type: 'Point',
-        coordinates // [longitude, latitude]
+        // Use provided coordinates or default if not sent/schema handles default
+        coordinates: req.body.coordinates || [0, 0] // Placeholder/default
       },
-      contactInfo,
-      description,
-      businessHours,
       apiKey,
-      owner: req.user._id
+      owner: req.user._id, // From 'auth' middleware
+      // contactInfo, description, businessHours will use schema defaults or be undefined
+    };
+
+    const business = await Business.create(businessData);
+
+    // Create a default Campaign for this business
+    const defaultCampaign = await Campaign.create({
+      business: business._id,
+      name: `Loyalty Program - ${business.name}`, // Or a more generic default name
+      description: `Collect ${stampsRequired} stamps to earn a reward!`,
+      stampGoal: parseInt(stampsRequired),
+      reward: "Default Reward (e.g., 1 Free Item)", // Business owner should update this later
+      isActive: true,
+      // Other campaign fields (startDate, endDate, image, terms, etc.) will use schema defaults or be undefined
     });
 
     res.status(201).json({
       _id: business._id,
       name: business.name,
       apiKey: business.apiKey,
-      message: 'Business registered successfully'
+      message: `Business '${business.name}' registered successfully with a default loyalty campaign.`,
+      defaultCampaign: {
+        _id: defaultCampaign._id,
+        name: defaultCampaign.name,
+        stampGoal: defaultCampaign.stampGoal
+      }
     });
+
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error("Error in registerBusiness:", error);
+    if (error.name === 'ValidationError') {
+      // Extract more specific validation messages if possible
+      const messages = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({ message: "Validation Error", errors: messages });
+    }
+    res.status(500).json({ message: 'Server error during business registration.', error: error.message });
   }
 };
+
 
 const uploadBusinessLogo = async (req, res) => {
   try {
@@ -1650,7 +1684,174 @@ const verifyQRCode = async (req, res) => {
   }
 };
 
-// Register routes
+const getUserLoyaltyCards = async (req, res) => {
+  try {
+    // Get all active stamps for the user, populating campaign and its business
+    const userStamps = await Stamp.find({
+      user: req.user._id, // req.user._id comes from the 'auth' middleware
+      redeemed: false
+    })
+    .populate({
+      path: 'campaign',
+      select: 'name description stampGoal reward image business isActive endDate', // Added isActive and endDate for potential client-side filtering
+      populate: {
+        path: 'business',
+        select: 'name logo category _id' // Ensure _id is selected for business
+      }
+    })
+    .sort({ createdAt: -1 }); // Optional: sort stamps if needed
+
+    const campaignsMap = new Map();
+
+    userStamps.forEach(stamp => {
+      // Ensure campaign and business data are populated and campaign is active
+      if (!stamp.campaign || !stamp.campaign._id || !stamp.campaign.business || !stamp.campaign.business._id) {
+        return; // Skip if essential data is missing
+      }
+
+      // Optional: You might want to filter out cards for inactive campaigns or past endDates here
+      // if (!stamp.campaign.isActive || (stamp.campaign.endDate && new Date(stamp.campaign.endDate) < new Date())) {
+      //   return;
+      // }
+
+      const campaignId = stamp.campaign._id.toString();
+
+      if (!campaignsMap.has(campaignId)) {
+        campaignsMap.set(campaignId, {
+          // Store the fully populated campaign object first
+          populatedCampaign: stamp.campaign,
+          currentUserStampCount: 1
+        });
+      } else {
+        campaignsMap.get(campaignId).currentUserStampCount += 1;
+      }
+    });
+
+    // Transform map to the array structure expected by the frontend
+    const loyaltyCards = Array.from(campaignsMap.values()).map(item => {
+      const businessDetails = item.populatedCampaign.business;
+      // Create a campaign object without the nested business for the final structure
+      const campaignDetails = {
+        _id: item.populatedCampaign._id,
+        name: item.populatedCampaign.name,
+        description: item.populatedCampaign.description,
+        stampGoal: item.populatedCampaign.stampGoal,
+        reward: item.populatedCampaign.reward,
+        image: item.populatedCampaign.image,
+        // You can add other campaign fields here if needed by the frontend
+      };
+
+      return {
+        business: {
+          _id: businessDetails._id,
+          name: businessDetails.name,
+          logo: businessDetails.logo,
+          category: businessDetails.category
+        },
+        campaign: campaignDetails,
+        currentUserStampCount: item.currentUserStampCount
+      };
+    });
+
+    res.json(loyaltyCards);
+
+  } catch (error) {
+    console.error('Error fetching user loyalty cards:', error);
+    res.status(500).json({ message: 'Server error while fetching loyalty cards.', error: error.message });
+  }
+};
+
+const getActiveCampaigns = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    // 1. Fetch all active campaigns and populate necessary business details
+    const allActiveCampaigns = await Campaign.find({
+      isActive: true,
+      // Optional: Add date checks if your campaigns have start/end dates
+      // endDate: { $gte: new Date() } // Or handle campaigns with no endDate
+    })
+    .populate('business', 'name _id category') // Populate business name, ID, and category
+    .select('name description stampGoal reward business image terms') // Select necessary campaign fields
+    .lean(); // Use .lean() for faster queries if you don't need Mongoose documents
+
+    if (!allActiveCampaigns.length) {
+        return res.json([]); // Return empty if no active campaigns at all
+    }
+
+    // 2. Fetch IDs of campaigns the user has already joined (has unredeemed stamps for)
+    const userStamps = await Stamp.find({ user: userId, redeemed: false }).select('campaign').lean();
+    const joinedCampaignIds = new Set(userStamps.map(stamp => stamp.campaign.toString()));
+
+    // 3. Filter out campaigns the user has already joined
+    const discoverableCampaigns = allActiveCampaigns.filter(
+      campaign => !joinedCampaignIds.has(campaign._id.toString())
+    );
+
+    res.json(discoverableCampaigns);
+  } catch (error) {
+    console.error("Error fetching active campaigns:", error);
+    res.status(500).json({ message: "Server error fetching active campaigns." });
+  }
+};
+
+const joinCampaign = async (req, res) => {
+  const { campaignId } = req.body;
+  const userId = req.user._id;
+
+  if (!campaignId) {
+    return res.status(400).json({ message: "Campaign ID is required." });
+  }
+
+  try {
+    // 1. Fetch the campaign to ensure it's active and exists
+    const campaignToJoin = await Campaign.findOne({ _id: campaignId, isActive: true });
+
+    if (!campaignToJoin) {
+      return res.status(404).json({ message: "Campaign not found or is not active." });
+    }
+
+    // 2. Check if user already has unredeemed stamps for this campaign
+    const existingStamp = await Stamp.findOne({
+      user: userId,
+      campaign: campaignId,
+      redeemed: false
+    });
+
+    if (existingStamp) {
+      return res.status(400).json({ message: "You are already participating in this campaign." });
+    }
+
+    // 3. Create the first stamp to signify joining the campaign
+    //    The 'business' field in the Stamp schema refers to the business offering the campaign.
+    const newStamp = await Stamp.create({
+      user: userId,
+      business: campaignToJoin.business, // campaignToJoin.business is the ObjectId of the business
+      campaign: campaignId,
+      // 'redeemed' is false by default as per your schema
+      // 'issuedLocation' can be null or set if relevant for a user-initiated join
+    });
+
+    // Optional: Update analytics for the business if you have such a system
+    // await updateAnalytics(campaignToJoin.business, { stampsIssued: 1 /*, newUsers: 1 if first stamp for this user & business */ });
+
+    res.status(201).json({
+      message: `Successfully joined the campaign: ${campaignToJoin.name}!`,
+      stampId: newStamp._id, // You can return the ID of the new stamp
+      campaignId: campaignToJoin._id,
+      businessId: campaignToJoin.business
+    });
+
+  } catch (error)
+    {
+    console.error("Error joining campaign:", error);
+    if (error.name === 'ValidationError' || error.name === 'CastError') { // Handle Mongoose specific errors
+         return res.status(400).json({ message: "Invalid Campaign ID or data.", errors: error.errors });
+    }
+    res.status(500).json({ message: "Server error while joining campaign." });
+  }
+};
+
 // User routes
 app.post('/api/users/register', registerUser);
 app.post('/api/users/login', loginUser);
@@ -1660,12 +1861,24 @@ app.post('/api/users/profile/image', auth, upload.single('image'), uploadProfile
 app.post('/api/users/favorites', auth, toggleFavoriteBusiness);
 app.get('/api/users/notifications', auth, getUserNotifications);
 app.put('/api/users/notifications/:notificationId', auth, markNotificationAsRead);
-app.get('/api/users/stamps', auth, getStampsByUser);
-app.get('/api/users/campaigns', auth, getUserCampaigns);
+app.get('/api/users/stamps', auth, getStampsByUser); // Gets detailed stamp history
+
+// Modified/Corrected route from previous step for fetching loyalty cards for home screen
+app.get('/api/users/me/loyalty-cards', auth, getUserLoyaltyCards);
+
+// This was the old user campaigns route, getUserLoyaltyCards is more specific for the card view.
+// You can keep it if it serves a different purpose or remove if getUserLoyaltyCards replaces its functionality.
+// app.get('/api/users/campaigns', auth, getUserCampaigns);
+
 app.get('/api/users/promotions', auth, getUserPromotions);
 app.post('/api/users/redeem', auth, redeemReward);
 
+// **NEW User route for joining a campaign**
+app.post('/api/users/me/join-campaign', auth, joinCampaign);
+
+
 // Business routes
+// ... (your existing business routes)
 app.post('/api/businesses/register', auth, registerBusiness);
 app.put('/api/businesses/:businessId', businessOwnerAuth, updateBusiness);
 app.post('/api/businesses/:businessId/logo', businessOwnerAuth, upload.single('logo'), uploadBusinessLogo);
@@ -1673,27 +1886,41 @@ app.get('/api/businesses/nearby', getNearbyBusinesses);
 app.get('/api/businesses/:businessId', getBusinessDetails);
 app.get('/api/businesses/:businessId/analytics', businessOwnerAuth, getBusinessAnalytics);
 
+
 // Campaign routes
+// ... (your existing campaign routes for business owners)
 app.post('/api/campaigns', businessOwnerAuth, createCampaign);
 app.put('/api/campaigns/:campaignId', businessOwnerAuth, updateCampaign);
 app.post('/api/campaigns/:campaignId/image', businessOwnerAuth, upload.single('image'), uploadCampaignImage);
 app.get('/api/campaigns/:campaignId/qrcode', businessOwnerAuth, generateStampQRCode);
 
+// **NEW Public/User-facing route to discover active campaigns**
+app.get('/api/campaigns/active', auth, getActiveCampaigns); // Requires auth to filter already joined
+
+
 // Promotion routes
+// ... (your existing promotion routes)
 app.post('/api/promotions', businessOwnerAuth, createPromotion);
 app.post('/api/promotions/:promotionId/image', businessOwnerAuth, upload.single('image'), uploadPromotionImage);
 
+
 // Stamp routes
+// ... (your existing stamp routes, primarily for business actions)
 app.post('/api/stamps', businessAuth, addStamp);
 app.post('/api/stamps/verify', verifyQRCode);
 
+
 // Add error handler
+// ... (your existing error handler)
 app.use((error, req, res, next) => {
   console.error(error.stack);
   res.status(500).json({
     message: 'An unexpected error occurred',
-    error: process.env.NODE_ENV === 'development' ? error.message : {}
+    error: process.env.NODE_ENV === 'development' ? error.message : {} // More detail in dev
   });
 });
+
+module.exports = app;
+
 
 module.exports = app;
