@@ -47,7 +47,7 @@ const DiscoverCampaignsScreen = ({ navigation }) => {
       let errorData;
       try {
         errorData = await response.json();
-      } catch (e) {
+      } catch (error) {
         // If response is not JSON, use statusText or a generic message
         errorData = { message: response.statusText || `HTTP Error ${response.status}` };
       }

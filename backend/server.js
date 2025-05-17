@@ -17,14 +17,11 @@ if (!process.env.JWT_SECRET) {
   process.exit(1);
 }
 
-// Initialize express app
 const app = express();
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, 'uploads/');
@@ -36,7 +33,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
       cb(null, true);
@@ -46,25 +43,20 @@ const upload = multer({
   }
 });
 
-// Serve static files
 app.use('/uploads', express.static('uploads'));
 
 const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/stamp-loyalty';
 console.log(`Attempting to connect to MongoDB at: ${mongoUri}`);
 
-mongoose.connect(mongoUri, {
-  // ... your options
-})
+mongoose.connect(mongoUri)
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.error('MongoDB connection error:', err));
 
-// Start server
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// MongoDB Models
 const userSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -110,7 +102,6 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-// Hash password before saving
 userSchema.pre('save', async function (next) {
   if (this.isModified('password')) {
     this.password = await bcrypt.hash(this.password, 8);
@@ -118,7 +109,6 @@ userSchema.pre('save', async function (next) {
   next();
 });
 
-// Method to validate password
 userSchema.methods.comparePassword = async function (password) {
   return await bcrypt.compare(password, this.password);
 };
@@ -138,7 +128,7 @@ const businessSchema = new mongoose.Schema({
   },
   address: {
     type: String,
-    required: true, // Or false if address can be optional initially
+    required: true,
     trim: true
   },
   location: {
@@ -148,7 +138,7 @@ const businessSchema = new mongoose.Schema({
       default: 'Point'
     },
     coordinates: {
-      type: [Number], // [longitude, latitude]
+      type: [Number],
       default: [0,0],
       required: false
     }
@@ -188,7 +178,6 @@ const businessSchema = new mongoose.Schema({
   }
 });
 
-// Create geospatial index for location-based queries
 businessSchema.index({ location: '2dsphere' });
 
 const Business = mongoose.model('Business', businessSchema);
@@ -234,7 +223,7 @@ const campaignSchema = new mongoose.Schema({
   },
   proximityThreshold: {
     type: Number,
-    default: 100 // meters
+    default: 100
   },
   createdAt: {
     type: Date,
@@ -363,7 +352,6 @@ const notificationSchema = new mongoose.Schema({
 
 const Notification = mongoose.model('Notification', notificationSchema);
 
-// Analytics schema to track business metrics
 const analyticsSchema = new mongoose.Schema({
   business: {
     type: mongoose.Schema.Types.ObjectId,
@@ -408,7 +396,6 @@ const analyticsSchema = new mongoose.Schema({
 
 const Analytics = mongoose.model('Analytics', analyticsSchema);
 
-// Middleware functions
 const auth = async (req, res, next) => {
   try {
     const token = req.header('Authorization').replace('Bearer ', '');
@@ -450,7 +437,6 @@ const businessAuth = async (req, res, next) => {
 
 const businessOwnerAuth = async (req, res, next) => {
   try {
-    // First authenticate the user
     const token = req.header('Authorization').replace('Bearer ', '');
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id);
@@ -459,7 +445,6 @@ const businessOwnerAuth = async (req, res, next) => {
       throw new Error('User not found');
     }
 
-    // Then check if they own the business
     const businessId = req.params.businessId || req.body.businessId;
     if (!businessId) {
       throw new Error('Business ID is required');
@@ -470,7 +455,6 @@ const businessOwnerAuth = async (req, res, next) => {
       return res.status(404).json({ message: 'Business not found' });
     }
 
-    // Check ownership
     if (business.owner.toString() !== user._id.toString()) {
       return res.status(403).json({ message: 'Access denied: You do not own this business' });
     }
@@ -483,12 +467,10 @@ const businessOwnerAuth = async (req, res, next) => {
   }
 };
 
-// Helper function - Generate JWT Token
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
 };
 
-// Helper function - Update analytics
 const updateAnalytics = async (businessId, metricsToUpdate) => {
   try {
     const today = new Date();
@@ -509,7 +491,6 @@ const updateAnalytics = async (businessId, metricsToUpdate) => {
       });
     }
 
-    // Update the metrics
     Object.keys(metricsToUpdate).forEach(key => {
       if (analytics.metrics[key] !== undefined) {
         analytics.metrics[key] += metricsToUpdate[key];
@@ -523,7 +504,6 @@ const updateAnalytics = async (businessId, metricsToUpdate) => {
   }
 };
 
-// Helper function to check location proximity
 const isWithinProximity = (userLocation, businessLocation, threshold) => {
   if (!userLocation || !businessLocation) return false;
 
@@ -535,7 +515,6 @@ const isWithinProximity = (userLocation, businessLocation, threshold) => {
   return distanceInMeters <= threshold;
 };
 
-// Helper function to generate QR code
 const generateQRCode = async (data) => {
   try {
     const qrCodeString = await qrcode.toDataURL(JSON.stringify(data));
@@ -546,25 +525,18 @@ const generateQRCode = async (data) => {
   }
 };
 
-// User Controllers
 const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
-
-    // Check if user already exists
     const userExists = await User.findOne({ email });
     if (userExists) {
       return res.status(400).json({ message: 'User already exists' });
     }
-
-    // Create new user
     const user = await User.create({
       name,
       email,
       password
     });
-
-    // Return user data with token
     res.status(201).json({
       _id: user._id,
       name: user.name,
@@ -579,11 +551,7 @@ const registerUser = async (req, res) => {
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    // Find user by email
     const user = await User.findOne({ email });
-
-    // Check if user exists and password is correct
     if (user && (await user.comparePassword(password))) {
       res.json({
         _id: user._id,
@@ -601,13 +569,19 @@ const loginUser = async (req, res) => {
 
 const getUserProfile = async (req, res) => {
   try {
-    // User is already attached to req by auth middleware
     const user = await User.findById(req.user._id)
       .select('-password')
       .populate('favoriteBusinesses', 'name logo category');
 
     if (user) {
-      res.json(user);
+      // Check if user owns any businesses
+      const ownedBusinesses = await Business.find({ owner: user._id });
+      const isBusinessOwner = ownedBusinesses.length > 0;
+
+      res.json({
+        ...user.toObject(),
+        isBusinessOwner
+      });
     } else {
       res.status(404).json({ message: 'User not found' });
     }
@@ -619,45 +593,33 @@ const getUserProfile = async (req, res) => {
 const updateUserProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-
-    // Update basic fields if provided
     user.name = req.body.name || user.name;
-
     if (req.body.email && req.body.email !== user.email) {
-      // Check if email is already in use
       const emailExists = await User.findOne({ email: req.body.email });
       if (emailExists) {
         return res.status(400).json({ message: 'Email already in use' });
       }
       user.email = req.body.email;
     }
-
     if (req.body.password) {
       user.password = req.body.password;
     }
-
-    // Update preferences if provided
     if (req.body.preferences) {
       user.preferences = {
         ...user.preferences,
         ...req.body.preferences
       };
     }
-
-    // Update demographics if provided
     if (req.body.demographics) {
       user.demographics = {
         ...user.demographics,
         ...req.body.demographics
       };
     }
-
     const updatedUser = await user.save();
-
     res.json({
       _id: updatedUser._id,
       name: updatedUser.name,
@@ -675,15 +637,12 @@ const uploadProfileImage = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });
     }
-
     const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-
     user.profileImage = req.file.path;
     await user.save();
-
     res.json({
       message: 'Profile image uploaded successfully',
       profileImage: user.profileImage
@@ -696,34 +655,23 @@ const uploadProfileImage = async (req, res) => {
 const toggleFavoriteBusiness = async (req, res) => {
   try {
     const { businessId } = req.body;
-
     if (!businessId) {
       return res.status(400).json({ message: 'Business ID is required' });
     }
-
     const business = await Business.findById(businessId);
     if (!business) {
       return res.status(404).json({ message: 'Business not found' });
     }
-
     const user = await User.findById(req.user._id);
-
-    // Check if business is already in favorites
     const favoriteIndex = user.favoriteBusinesses.findIndex(
       id => id.toString() === businessId
     );
-
-    // Toggle favorite status
     if (favoriteIndex === -1) {
-      // Add to favorites
       user.favoriteBusinesses.push(businessId);
     } else {
-      // Remove from favorites
       user.favoriteBusinesses.splice(favoriteIndex, 1);
     }
-
     await user.save();
-
     res.json({
       message: favoriteIndex === -1 ? 'Business added to favorites' : 'Business removed from favorites',
       favoriteBusinesses: user.favoriteBusinesses
@@ -733,19 +681,16 @@ const toggleFavoriteBusiness = async (req, res) => {
   }
 };
 
-// Business Controllers
 const registerBusiness = async (req, res) => {
   try {
     const {
-      name,          // Business name from frontend
-      category,      // Category from frontend
-      address,       // Address string from frontend
-      stampsRequired // Number of stamps from frontend (came as stampsCount)
-      // Optional: If you decide to send coordinates from frontend in the future:
-      // coordinates // Expected as [longitude, latitude]
+      name,
+      category,
+      address,
+      stampsRequired,
+      coordinates
     } = req.body;
 
-    // Basic validation for required fields from frontend
     if (!name || !category || !address || !stampsRequired) {
       return res.status(400).json({ message: 'Missing required business fields: name, category, address, or stampsRequired.' });
     }
@@ -753,37 +698,27 @@ const registerBusiness = async (req, res) => {
       return res.status(400).json({ message: 'Stamps required must be a positive number.' });
     }
 
-    // Generate API key
     const apiKey = crypto.randomBytes(16).toString('hex');
-
-    // Create the Business
-    // This assumes you've modified businessSchema.address to type: String
-    // And businessSchema.location.coordinates has a default or is made optional.
     const businessData = {
       name,
       category,
-      address: address, // Assumes schema.address is now type: String
+      address: address,
       location: {
         type: 'Point',
-        // Use provided coordinates or default if not sent/schema handles default
-        coordinates: req.body.coordinates || [0, 0] // Placeholder/default
+        coordinates: coordinates || [0, 0]
       },
       apiKey,
-      owner: req.user._id, // From 'auth' middleware
-      // contactInfo, description, businessHours will use schema defaults or be undefined
+      owner: req.user._id,
     };
 
     const business = await Business.create(businessData);
-
-    // Create a default Campaign for this business
     const defaultCampaign = await Campaign.create({
       business: business._id,
-      name: `Loyalty Program - ${business.name}`, // Or a more generic default name
+      name: `Loyalty Program - ${business.name}`,
       description: `Collect ${stampsRequired} stamps to earn a reward!`,
       stampGoal: parseInt(stampsRequired),
-      reward: "Default Reward (e.g., 1 Free Item)", // Business owner should update this later
+      reward: "Default Reward (e.g., 1 Free Item)",
       isActive: true,
-      // Other campaign fields (startDate, endDate, image, terms, etc.) will use schema defaults or be undefined
     });
 
     res.status(201).json({
@@ -801,7 +736,6 @@ const registerBusiness = async (req, res) => {
   } catch (error) {
     console.error("Error in registerBusiness:", error);
     if (error.name === 'ValidationError') {
-      // Extract more specific validation messages if possible
       const messages = Object.values(error.errors).map(e => e.message);
       return res.status(400).json({ message: "Validation Error", errors: messages });
     }
@@ -809,26 +743,20 @@ const registerBusiness = async (req, res) => {
   }
 };
 
-
 const uploadBusinessLogo = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });
     }
-
     const business = await Business.findById(req.params.businessId);
     if (!business) {
       return res.status(404).json({ message: 'Business not found' });
     }
-
-    // Verify ownership
     if (business.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Access denied' });
     }
-
     business.logo = req.file.path;
     await business.save();
-
     res.json({
       message: 'Logo uploaded successfully',
       logo: business.logo
@@ -840,27 +768,20 @@ const uploadBusinessLogo = async (req, res) => {
 
 const updateBusiness = async (req, res) => {
   try {
-    const business = req.business; // From businessOwnerAuth middleware
-
-    // Update fields if provided
+    const business = req.business;
     const fieldsToUpdate = [
       'name', 'category', 'address', 'contactInfo',
       'description', 'businessHours'
     ];
-
     fieldsToUpdate.forEach(field => {
       if (req.body[field]) {
         business[field] = req.body[field];
       }
     });
-
-    // Handle location update separately
     if (req.body.coordinates) {
       business.location.coordinates = req.body.coordinates;
     }
-
     const updatedBusiness = await business.save();
-
     res.json({
       _id: updatedBusiness._id,
       name: updatedBusiness.name,
@@ -873,13 +794,10 @@ const updateBusiness = async (req, res) => {
 
 const getNearbyBusinesses = async (req, res) => {
   try {
-    const { latitude, longitude, distance = 5000, category } = req.query; // distance in meters
-
+    const { latitude, longitude, distance = 5000, category } = req.query;
     if (!latitude || !longitude) {
       return res.status(400).json({ message: 'Latitude and longitude are required' });
     }
-
-    // Build the query
     const query = {
       location: {
         $near: {
@@ -891,37 +809,29 @@ const getNearbyBusinesses = async (req, res) => {
         }
       }
     };
-
-    // Add category filter if provided
     if (category) {
       query.category = category;
     }
-
     const businesses = await Business.find(query)
       .select('name logo category address location description');
-
     res.json(businesses);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-const getBusinessDetails = async (req, res) => {
+const getMyBusiness = async (req, res) => {
   try {
-    const business = await Business.findById(req.params.businessId)
-      .select('-apiKey');
-
+    const business = await Business.findOne({ owner: req.user._id });
     if (!business) {
-      return res.status(404).json({ message: 'Business not found' });
+      return res.status(404).json({ message: 'No business found for this user' });
     }
 
-    // Get active campaigns for this business
     const campaigns = await Campaign.find({
       business: business._id,
       isActive: true
     });
 
-    // Get active promotions for this business
     const promotions = await Promotion.find({
       business: business._id,
       isActive: true,
@@ -938,7 +848,34 @@ const getBusinessDetails = async (req, res) => {
   }
 };
 
-// Campaign Controllers
+const getBusinessDetails = async (req, res) => {
+  try {
+    console.log("ideeee");
+    
+    const business = await Business.findById(req.params.businessId)
+      .select('-apiKey');
+    if (!business) {
+      return res.status(404).json({ message: 'Business not found' });
+    }
+    const campaigns = await Campaign.find({
+      business: business._id,
+      isActive: true
+    });
+    const promotions = await Promotion.find({
+      business: business._id,
+      isActive: true,
+      endDate: { $gte: new Date() }
+    });
+    res.json({
+      business,
+      campaigns,
+      promotions
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 const createCampaign = async (req, res) => {
   try {
     const {
@@ -952,9 +889,7 @@ const createCampaign = async (req, res) => {
       proximityThreshold,
       terms
     } = req.body;
-
-    const business = req.business; // From businessOwnerAuth middleware
-
+    const business = req.business;
     const campaign = await Campaign.create({
       business: business._id,
       name,
@@ -967,7 +902,6 @@ const createCampaign = async (req, res) => {
       proximityThreshold: proximityThreshold || 100,
       terms
     });
-
     res.status(201).json({
       message: 'Campaign created successfully',
       campaign
@@ -982,21 +916,16 @@ const uploadCampaignImage = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });
     }
-
     const campaign = await Campaign.findById(req.params.campaignId);
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found' });
     }
-
-    // Verify business ownership
     const business = await Business.findById(campaign.business);
     if (business.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Access denied' });
     }
-
     campaign.image = req.file.path;
     await campaign.save();
-
     res.json({
       message: 'Campaign image uploaded successfully',
       image: campaign.image
@@ -1012,27 +941,20 @@ const updateCampaign = async (req, res) => {
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found' });
     }
-
-    // Verify business ownership
     const business = await Business.findById(campaign.business);
     if (business.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Access denied' });
     }
-
-    // Update fields if provided
     const fieldsToUpdate = [
       'name', 'description', 'stampGoal', 'reward', 'rewardValue',
       'endDate', 'isActive', 'locationRequired', 'proximityThreshold', 'terms'
     ];
-
     fieldsToUpdate.forEach(field => {
       if (req.body[field] !== undefined) {
         campaign[field] = req.body[field];
       }
     });
-
     const updatedCampaign = await campaign.save();
-
     res.json({
       message: 'Campaign updated successfully',
       campaign: updatedCampaign
@@ -1044,7 +966,6 @@ const updateCampaign = async (req, res) => {
 
 const getUserCampaigns = async (req, res) => {
   try {
-    // Get all stamps for the user
     const userStamps = await Stamp.find({
       user: req.user._id,
       redeemed: false
@@ -1057,13 +978,9 @@ const getUserCampaigns = async (req, res) => {
           select: 'name logo category'
         }
       });
-
-    // Group stamps by campaign
     const campaignsMap = new Map();
-
     userStamps.forEach(stamp => {
       if (!stamp.campaign || !stamp.campaign._id) return;
-
       const campaignId = stamp.campaign._id.toString();
       if (!campaignsMap.has(campaignId)) {
         campaignsMap.set(campaignId, {
@@ -1074,42 +991,30 @@ const getUserCampaigns = async (req, res) => {
         campaignsMap.get(campaignId).stampCount += 1;
       }
     });
-
-    // Convert map to array
     const userCampaigns = Array.from(campaignsMap.values());
-
     res.json(userCampaigns);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// Stamp Controllers
 const addStamp = async (req, res) => {
   try {
     const { userId, campaignId, location } = req.body;
-
     if (!userId || !campaignId) {
       return res.status(400).json({ message: 'User ID and Campaign ID are required' });
     }
-
-    // Check if user exists
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-
-    // Check if campaign exists and is active
     const campaign = await Campaign.findById(campaignId);
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found' });
     }
-
     if (!campaign.isActive) {
       return res.status(400).json({ message: 'This campaign is no longer active' });
     }
-
-    // Check location if required
     if (campaign.locationRequired && location) {
       const business = await Business.findById(req.business._id);
       const isNearby = isWithinProximity(
@@ -1117,39 +1022,27 @@ const addStamp = async (req, res) => {
         business.location,
         campaign.proximityThreshold
       );
-
       if (!isNearby) {
         return res.status(400).json({
           message: 'You must be at the business location to receive a stamp'
         });
       }
     }
-
-    // Create new stamp
     const stamp = await Stamp.create({
       user: userId,
       business: req.business._id,
       campaign: campaignId,
       issuedLocation: location
     });
-
-    // Update analytics
     updateAnalytics(req.business._id, { stampsIssued: 1 });
-
-    // Count active stamps for this campaign
     const stampCount = await Stamp.countDocuments({
       user: userId,
       campaign: campaignId,
       redeemed: false
     });
-
-    // Check if user has earned a reward
     let rewardEarned = false;
     if (stampCount >= campaign.stampGoal) {
       rewardEarned = true;
-
-      // Create notification for reward earned
-      // Create notification for reward earned
       await Notification.create({
         user: userId,
         title: 'Reward Earned!',
@@ -1161,7 +1054,6 @@ const addStamp = async (req, res) => {
         }
       });
     }
-
     res.json({
       message: 'Stamp added successfully',
       stamp,
@@ -1185,7 +1077,6 @@ const getStampsByUser = async (req, res) => {
         select: 'name stampGoal reward'
       })
       .sort({ createdAt: -1 });
-
     res.json(stamps);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -1195,28 +1086,20 @@ const getStampsByUser = async (req, res) => {
 const redeemReward = async (req, res) => {
   try {
     const { campaignId, location } = req.body;
-
-    // Find campaign
     const campaign = await Campaign.findById(campaignId);
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found' });
     }
-
-    // Count unredeemed stamps for this campaign
     const stampCount = await Stamp.countDocuments({
       user: req.user._id,
       campaign: campaignId,
       redeemed: false
     });
-
-    // Check if user has enough stamps
     if (stampCount < campaign.stampGoal) {
       return res.status(400).json({
         message: `Not enough stamps. You need ${campaign.stampGoal} stamps to redeem this reward.`
       });
     }
-
-    // Check location if required
     if (campaign.locationRequired && location) {
       const business = await Business.findById(campaign.business);
       const isNearby = isWithinProximity(
@@ -1224,32 +1107,23 @@ const redeemReward = async (req, res) => {
         business.location,
         campaign.proximityThreshold
       );
-
       if (!isNearby) {
         return res.status(400).json({
           message: 'You must be at the business location to redeem this reward'
         });
       }
     }
-
-    // Mark stamps as redeemed
     const stamps = await Stamp.find({
       user: req.user._id,
       campaign: campaignId,
       redeemed: false
     }).limit(campaign.stampGoal);
-
     const stampIds = stamps.map(stamp => stamp._id);
-
     await Stamp.updateMany(
       { _id: { $in: stampIds } },
       { redeemed: true }
     );
-
-    // Update analytics
     updateAnalytics(campaign.business, { stampsRedeemed: campaign.stampGoal });
-
-    // Generate QR code for redemption
     const redemptionData = {
       userId: req.user._id,
       businessId: campaign.business,
@@ -1257,9 +1131,7 @@ const redeemReward = async (req, res) => {
       reward: campaign.reward,
       redeemedAt: new Date()
     };
-
     const qrCode = await generateQRCode(redemptionData);
-
     res.json({
       message: 'Reward redeemed successfully',
       reward: campaign.reward,
@@ -1270,7 +1142,6 @@ const redeemReward = async (req, res) => {
   }
 };
 
-// Promotion Controllers
 const createPromotion = async (req, res) => {
   try {
     const {
@@ -1283,9 +1154,7 @@ const createPromotion = async (req, res) => {
       discountValue,
       targetAudience
     } = req.body;
-
-    const business = req.business; // From businessOwnerAuth middleware
-
+    const business = req.business;
     const promotion = await Promotion.create({
       business: business._id,
       title,
@@ -1297,41 +1166,26 @@ const createPromotion = async (req, res) => {
       discountValue,
       targetAudience
     });
-
-    // Send notifications to targeted users
     if (targetAudience) {
-      // Build query to find targeted users
       let userQuery = {};
-
       if (targetAudience.interests && targetAudience.interests.length > 0) {
         userQuery['demographics.interests'] = { $in: targetAudience.interests };
       }
-
       if (targetAudience.gender) {
         userQuery['demographics.gender'] = targetAudience.gender;
       }
-
       if (targetAudience.ageRange && (targetAudience.ageRange.min || targetAudience.ageRange.max)) {
         userQuery['demographics.birthYear'] = {};
-
         const currentYear = new Date().getFullYear();
-
         if (targetAudience.ageRange.min) {
           userQuery['demographics.birthYear'].$lte = currentYear - targetAudience.ageRange.min;
         }
-
         if (targetAudience.ageRange.max) {
           userQuery['demographics.birthYear'].$gte = currentYear - targetAudience.ageRange.max;
         }
       }
-
-      // Add preference for notification
       userQuery['preferences.notificationsEnabled'] = true;
-
-      // Find users with targeted profile
       const targetedUsers = await User.find(userQuery);
-
-      // Create notifications
       const notifications = targetedUsers.map(user => ({
         user: user._id,
         title: 'New Promotion!',
@@ -1342,12 +1196,10 @@ const createPromotion = async (req, res) => {
           promotionId: promotion._id
         }
       }));
-
       if (notifications.length > 0) {
         await Notification.insertMany(notifications);
       }
     }
-
     res.status(201).json({
       message: 'Promotion created successfully',
       promotion
@@ -1362,21 +1214,16 @@ const uploadPromotionImage = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });
     }
-
     const promotion = await Promotion.findById(req.params.promotionId);
     if (!promotion) {
       return res.status(404).json({ message: 'Promotion not found' });
     }
-
-    // Verify business ownership
     const business = await Business.findById(promotion.business);
     if (business.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Access denied' });
     }
-
     promotion.image = req.file.path;
     await promotion.save();
-
     res.json({
       message: 'Promotion image uploaded successfully',
       image: promotion.image
@@ -1388,79 +1235,55 @@ const uploadPromotionImage = async (req, res) => {
 
 const getUserPromotions = async (req, res) => {
   try {
-    // Get user demographics
     const user = await User.findById(req.user._id);
-
-    // Find active promotions
     const query = {
       isActive: true,
       startDate: { $lte: new Date() },
       endDate: { $gte: new Date() }
     };
-
-    // Find user's favorite businesses
     if (user.favoriteBusinesses && user.favoriteBusinesses.length > 0) {
       query.business = { $in: user.favoriteBusinesses };
     }
-
-    // Get matching promotions
     const promotions = await Promotion.find(query)
       .populate('business', 'name logo category');
-
-    // Filter promotions based on user demographics when applicable
     const relevantPromotions = promotions.filter(promo => {
-      // If no target audience is defined, show to everyone
       if (!promo.targetAudience) return true;
-
-      // Check interests match
       if (promo.targetAudience.interests && promo.targetAudience.interests.length > 0) {
         if (!user.demographics || !user.demographics.interests) {
           return false;
         }
-
         const hasMatchingInterest = user.demographics.interests.some(interest =>
           promo.targetAudience.interests.includes(interest)
         );
-
         if (!hasMatchingInterest) return false;
       }
-
-      // Check gender match
       if (promo.targetAudience.gender && user.demographics) {
         if (user.demographics.gender !== promo.targetAudience.gender) {
           return false;
         }
       }
-
-      // Check age range match
       if (promo.targetAudience.ageRange && user.demographics && user.demographics.birthYear) {
         const userAge = new Date().getFullYear() - user.demographics.birthYear;
-
         if (promo.targetAudience.ageRange.min && userAge < promo.targetAudience.ageRange.min) {
           return false;
         }
-
         if (promo.targetAudience.ageRange.max && userAge > promo.targetAudience.ageRange.max) {
           return false;
         }
       }
-
       return true;
     });
-
     res.json(relevantPromotions);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// Notification Controllers
 const getUserNotifications = async (req, res) => {
   try {
     const notifications = await Notification.find({ user: req.user._id })
       .sort({ createdAt: -1 })
       .limit(50);
-
     res.json(notifications);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -1470,42 +1293,32 @@ const getUserNotifications = async (req, res) => {
 const markNotificationAsRead = async (req, res) => {
   try {
     const notification = await Notification.findById(req.params.notificationId);
-
     if (!notification) {
       return res.status(404).json({ message: 'Notification not found' });
     }
-
     if (notification.user.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Access denied' });
     }
-
     notification.read = true;
     await notification.save();
-
     res.json({ message: 'Notification marked as read' });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// Analytics Controllers
 const getBusinessAnalytics = async (req, res) => {
   try {
-    // Verify business ownership
     const business = await Business.findById(req.params.businessId);
     if (!business) {
       return res.status(404).json({ message: 'Business not found' });
     }
-
     if (business.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Access denied' });
     }
-
     const { timeRange } = req.query;
     const today = new Date();
     let startDate;
-
-    // Determine date range
     switch (timeRange) {
       case 'week':
         startDate = new Date(today);
@@ -1521,32 +1334,25 @@ const getBusinessAnalytics = async (req, res) => {
         break;
       default:
         startDate = new Date(today);
-        startDate.setDate(today.getDate() - 30); // Default to 30 days
+        startDate.setDate(today.getDate() - 30);
     }
-
-    // Get analytics data for date range
     const analyticsData = await Analytics.find({
       business: business._id,
       date: { $gte: startDate, $lte: today }
     }).sort({ date: 1 });
-
-    // Get campaign statistics
     const campaigns = await Campaign.find({ business: business._id });
     const campaignStats = await Promise.all(
       campaigns.map(async campaign => {
         const stampsIssued = await Stamp.countDocuments({
           campaign: campaign._id
         });
-
         const stampsRedeemed = await Stamp.countDocuments({
           campaign: campaign._id,
           redeemed: true
         });
-
         const uniqueUsers = await Stamp.distinct('user', {
           campaign: campaign._id
         }).then(users => users.length);
-
         return {
           campaignId: campaign._id,
           name: campaign.name,
@@ -1557,16 +1363,12 @@ const getBusinessAnalytics = async (req, res) => {
         };
       })
     );
-
-    // Get promotion statistics
     const promotions = await Promotion.find({ business: business._id });
     const promotionStats = await Promise.all(
       promotions.map(async promotion => {
-        // Count notifications sent for this promotion
         const notificationsSent = await Notification.countDocuments({
           'relatedData.promotionId': promotion._id
         });
-
         return {
           promotionId: promotion._id,
           title: promotion.title,
@@ -1577,7 +1379,6 @@ const getBusinessAnalytics = async (req, res) => {
         };
       })
     );
-
     res.json({
       dailyMetrics: analyticsData,
       campaignStats,
@@ -1596,23 +1397,17 @@ const getBusinessAnalytics = async (req, res) => {
   }
 };
 
-// QR Code Controllers
 const generateStampQRCode = async (req, res) => {
   try {
     const { campaignId } = req.params;
-
-    // Verify business ownership
     const campaign = await Campaign.findById(campaignId);
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found' });
     }
-
     const business = await Business.findById(campaign.business);
     if (business.owner.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Access denied' });
     }
-
-    // Generate data for QR code
     const qrData = {
       type: 'stamp',
       businessId: business._id.toString(),
@@ -1621,10 +1416,7 @@ const generateStampQRCode = async (req, res) => {
       campaignName: campaign.name,
       timestamp: new Date()
     };
-
-    // Generate QR code
     const qrCode = await generateQRCode(qrData);
-
     res.json({
       qrCode,
       data: qrData
@@ -1637,34 +1429,26 @@ const generateStampQRCode = async (req, res) => {
 const verifyQRCode = async (req, res) => {
   try {
     const { qrData } = req.body;
-
     if (!qrData) {
       return res.status(400).json({ message: 'QR data is required' });
     }
-
     let data;
     try {
       data = JSON.parse(qrData);
     } catch (e) {
       return res.status(400).json({ message: 'Invalid QR code format' });
     }
-
-    // Verify QR code data
     if (!data.type || !data.businessId || !data.campaignId) {
       return res.status(400).json({ message: 'Invalid QR code data' });
     }
-
-    // Check if business and campaign exist
     const business = await Business.findById(data.businessId);
     if (!business) {
       return res.status(404).json({ message: 'Business not found' });
     }
-
     const campaign = await Campaign.findById(data.campaignId);
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found' });
     }
-
     res.json({
       valid: true,
       data: {
@@ -1686,39 +1470,31 @@ const verifyQRCode = async (req, res) => {
 
 const getUserLoyaltyCards = async (req, res) => {
   try {
-    // Get all active stamps for the user, populating campaign and its business
     const userStamps = await Stamp.find({
-      user: req.user._id, // req.user._id comes from the 'auth' middleware
+      user: req.user._id,
       redeemed: false
     })
     .populate({
       path: 'campaign',
-      select: 'name description stampGoal reward image business isActive endDate', // Added isActive and endDate for potential client-side filtering
+      select: 'name description stampGoal reward image business isActive endDate',
       populate: {
         path: 'business',
-        select: 'name logo category _id' // Ensure _id is selected for business
+        select: 'name logo category _id'
       }
     })
-    .sort({ createdAt: -1 }); // Optional: sort stamps if needed
+    .sort({ createdAt: -1 });
 
     const campaignsMap = new Map();
-
     userStamps.forEach(stamp => {
-      // Ensure campaign and business data are populated and campaign is active
       if (!stamp.campaign || !stamp.campaign._id || !stamp.campaign.business || !stamp.campaign.business._id) {
-        return; // Skip if essential data is missing
+        return;
       }
-
-      // Optional: You might want to filter out cards for inactive campaigns or past endDates here
-      // if (!stamp.campaign.isActive || (stamp.campaign.endDate && new Date(stamp.campaign.endDate) < new Date())) {
-      //   return;
-      // }
-
+      if (!stamp.campaign.isActive || (stamp.campaign.endDate && new Date(stamp.campaign.endDate) < new Date())) {
+         return;
+      }
       const campaignId = stamp.campaign._id.toString();
-
       if (!campaignsMap.has(campaignId)) {
         campaignsMap.set(campaignId, {
-          // Store the fully populated campaign object first
           populatedCampaign: stamp.campaign,
           currentUserStampCount: 1
         });
@@ -1727,10 +1503,8 @@ const getUserLoyaltyCards = async (req, res) => {
       }
     });
 
-    // Transform map to the array structure expected by the frontend
     const loyaltyCards = Array.from(campaignsMap.values()).map(item => {
       const businessDetails = item.populatedCampaign.business;
-      // Create a campaign object without the nested business for the final structure
       const campaignDetails = {
         _id: item.populatedCampaign._id,
         name: item.populatedCampaign.name,
@@ -1738,9 +1512,7 @@ const getUserLoyaltyCards = async (req, res) => {
         stampGoal: item.populatedCampaign.stampGoal,
         reward: item.populatedCampaign.reward,
         image: item.populatedCampaign.image,
-        // You can add other campaign fields here if needed by the frontend
       };
-
       return {
         business: {
           _id: businessDetails._id,
@@ -1752,9 +1524,7 @@ const getUserLoyaltyCards = async (req, res) => {
         currentUserStampCount: item.currentUserStampCount
       };
     });
-
     res.json(loyaltyCards);
-
   } catch (error) {
     console.error('Error fetching user loyalty cards:', error);
     res.status(500).json({ message: 'Server error while fetching loyalty cards.', error: error.message });
@@ -1764,30 +1534,23 @@ const getUserLoyaltyCards = async (req, res) => {
 const getActiveCampaigns = async (req, res) => {
   try {
     const userId = req.user._id;
-
-    // 1. Fetch all active campaigns and populate necessary business details
     const allActiveCampaigns = await Campaign.find({
       isActive: true,
-      // Optional: Add date checks if your campaigns have start/end dates
-      // endDate: { $gte: new Date() } // Or handle campaigns with no endDate
     })
-    .populate('business', 'name _id category') // Populate business name, ID, and category
-    .select('name description stampGoal reward business image terms') // Select necessary campaign fields
-    .lean(); // Use .lean() for faster queries if you don't need Mongoose documents
+    .populate('business', 'name _id category')
+    .select('name description stampGoal reward business image terms')
+    .lean();
 
     if (!allActiveCampaigns.length) {
-        return res.json([]); // Return empty if no active campaigns at all
+        return res.json([]);
     }
 
-    // 2. Fetch IDs of campaigns the user has already joined (has unredeemed stamps for)
     const userStamps = await Stamp.find({ user: userId, redeemed: false }).select('campaign').lean();
     const joinedCampaignIds = new Set(userStamps.map(stamp => stamp.campaign.toString()));
 
-    // 3. Filter out campaigns the user has already joined
     const discoverableCampaigns = allActiveCampaigns.filter(
       campaign => !joinedCampaignIds.has(campaign._id.toString())
     );
-
     res.json(discoverableCampaigns);
   } catch (error) {
     console.error("Error fetching active campaigns:", error);
@@ -1804,14 +1567,11 @@ const joinCampaign = async (req, res) => {
   }
 
   try {
-    // 1. Fetch the campaign to ensure it's active and exists
     const campaignToJoin = await Campaign.findOne({ _id: campaignId, isActive: true });
-
     if (!campaignToJoin) {
       return res.status(404).json({ message: "Campaign not found or is not active." });
     }
 
-    // 2. Check if user already has unredeemed stamps for this campaign
     const existingStamp = await Stamp.findOne({
       user: userId,
       campaign: campaignId,
@@ -1822,37 +1582,101 @@ const joinCampaign = async (req, res) => {
       return res.status(400).json({ message: "You are already participating in this campaign." });
     }
 
-    // 3. Create the first stamp to signify joining the campaign
-    //    The 'business' field in the Stamp schema refers to the business offering the campaign.
     const newStamp = await Stamp.create({
       user: userId,
-      business: campaignToJoin.business, // campaignToJoin.business is the ObjectId of the business
+      business: campaignToJoin.business,
       campaign: campaignId,
-      // 'redeemed' is false by default as per your schema
-      // 'issuedLocation' can be null or set if relevant for a user-initiated join
     });
-
-    // Optional: Update analytics for the business if you have such a system
-    // await updateAnalytics(campaignToJoin.business, { stampsIssued: 1 /*, newUsers: 1 if first stamp for this user & business */ });
 
     res.status(201).json({
       message: `Successfully joined the campaign: ${campaignToJoin.name}!`,
-      stampId: newStamp._id, // You can return the ID of the new stamp
+      stampId: newStamp._id,
       campaignId: campaignToJoin._id,
       businessId: campaignToJoin.business
     });
 
-  } catch (error)
-    {
+  } catch (error) {
     console.error("Error joining campaign:", error);
-    if (error.name === 'ValidationError' || error.name === 'CastError') { // Handle Mongoose specific errors
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
          return res.status(400).json({ message: "Invalid Campaign ID or data.", errors: error.errors });
     }
     res.status(500).json({ message: "Server error while joining campaign." });
   }
 };
 
-// User routes
+const collectStampByScan = async (req, res) => {
+  const userId = req.user._id;
+  const { campaignId, businessIdFromQR } = req.body;
+
+  if (!campaignId || !businessIdFromQR) {
+    return res.status(400).json({ message: "Campaign ID and Business ID from QR are required." });
+  }
+
+  try {
+    const campaign = await Campaign.findById(campaignId).populate('business', '_id name');
+    if (!campaign) {
+      return res.status(404).json({ message: "Campaign not found." });
+    }
+    if (!campaign.isActive) {
+      return res.status(400).json({ message: "This campaign is no longer active." });
+    }
+    if (campaign.business._id.toString() !== businessIdFromQR) {
+        console.warn(`Business ID mismatch from QR. QR: ${businessIdFromQR}, Campaign's Business: ${campaign.business._id.toString()}`);
+        return res.status(400).json({ message: "Campaign and Business information mismatch. Invalid QR Code." });
+    }
+
+    const newStamp = await Stamp.create({
+      user: userId,
+      business: campaign.business._id,
+      campaign: campaignId,
+    });
+
+    if (campaign.business && campaign.business._id) {
+        await updateAnalytics(campaign.business._id, { stampsIssued: 1 });
+    }
+
+    const currentStampsForCampaign = await Stamp.countDocuments({
+      user: userId,
+      campaign: campaignId,
+      redeemed: false
+    });
+
+    let rewardEarned = false;
+    if (currentStampsForCampaign >= campaign.stampGoal) {
+      rewardEarned = true;
+      await Notification.create({
+          user: userId,
+          title: 'Reward Earned!',
+          message: `You've earned: ${campaign.reward} at ${campaign.business.name || 'the business'}!`,
+          type: 'reward',
+          relatedData: {
+              businessId: campaign.business._id,
+              campaignId: campaign._id
+          }
+      });
+    }
+
+    res.status(201).json({
+      message: "Stamp collected successfully!",
+      stamp: newStamp,
+      currentUserStampCount: currentStampsForCampaign,
+      stampGoal: campaign.stampGoal,
+      reward: campaign.reward,
+      rewardEarned: rewardEarned,
+      campaignName: campaign.name,
+      businessName: campaign.business.name
+    });
+
+  } catch (error) {
+    console.error("Error collecting stamp by scan:", error);
+    if (error.name === 'ValidationError' || error.name === 'CastError') {
+      return res.status(400).json({ message: "Invalid data provided.", errors: error.errors });
+    }
+    res.status(500).json({ message: "Server error while collecting stamp." });
+  }
+};
+
+
 app.post('/api/users/register', registerUser);
 app.post('/api/users/login', loginUser);
 app.get('/api/users/profile', auth, getUserProfile);
@@ -1861,66 +1685,44 @@ app.post('/api/users/profile/image', auth, upload.single('image'), uploadProfile
 app.post('/api/users/favorites', auth, toggleFavoriteBusiness);
 app.get('/api/users/notifications', auth, getUserNotifications);
 app.put('/api/users/notifications/:notificationId', auth, markNotificationAsRead);
-app.get('/api/users/stamps', auth, getStampsByUser); // Gets detailed stamp history
-
-// Modified/Corrected route from previous step for fetching loyalty cards for home screen
+app.get('/api/users/stamps', auth, getStampsByUser);
 app.get('/api/users/me/loyalty-cards', auth, getUserLoyaltyCards);
-
-// This was the old user campaigns route, getUserLoyaltyCards is more specific for the card view.
-// You can keep it if it serves a different purpose or remove if getUserLoyaltyCards replaces its functionality.
-// app.get('/api/users/campaigns', auth, getUserCampaigns);
-
 app.get('/api/users/promotions', auth, getUserPromotions);
 app.post('/api/users/redeem', auth, redeemReward);
-
-// **NEW User route for joining a campaign**
 app.post('/api/users/me/join-campaign', auth, joinCampaign);
+app.post('/api/users/me/stamps/collect-by-scan', auth, collectStampByScan);
 
 
-// Business routes
-// ... (your existing business routes)
 app.post('/api/businesses/register', auth, registerBusiness);
 app.put('/api/businesses/:businessId', businessOwnerAuth, updateBusiness);
 app.post('/api/businesses/:businessId/logo', businessOwnerAuth, upload.single('logo'), uploadBusinessLogo);
 app.get('/api/businesses/nearby', getNearbyBusinesses);
+app.get('/api/businesses/me', auth, getMyBusiness);
 app.get('/api/businesses/:businessId', getBusinessDetails);
 app.get('/api/businesses/:businessId/analytics', businessOwnerAuth, getBusinessAnalytics);
 
 
-// Campaign routes
-// ... (your existing campaign routes for business owners)
 app.post('/api/campaigns', businessOwnerAuth, createCampaign);
 app.put('/api/campaigns/:campaignId', businessOwnerAuth, updateCampaign);
 app.post('/api/campaigns/:campaignId/image', businessOwnerAuth, upload.single('image'), uploadCampaignImage);
 app.get('/api/campaigns/:campaignId/qrcode', businessOwnerAuth, generateStampQRCode);
-
-// **NEW Public/User-facing route to discover active campaigns**
-app.get('/api/campaigns/active', auth, getActiveCampaigns); // Requires auth to filter already joined
+app.get('/api/campaigns/active', auth, getActiveCampaigns);
 
 
-// Promotion routes
-// ... (your existing promotion routes)
 app.post('/api/promotions', businessOwnerAuth, createPromotion);
 app.post('/api/promotions/:promotionId/image', businessOwnerAuth, upload.single('image'), uploadPromotionImage);
 
 
-// Stamp routes
-// ... (your existing stamp routes, primarily for business actions)
 app.post('/api/stamps', businessAuth, addStamp);
 app.post('/api/stamps/verify', verifyQRCode);
 
 
-// Add error handler
-// ... (your existing error handler)
 app.use((error, req, res, next) => {
   console.error(error.stack);
   res.status(500).json({
     message: 'An unexpected error occurred',
-    error: process.env.NODE_ENV === 'development' ? error.message : {} // More detail in dev
+    error: process.env.NODE_ENV === 'development' ? error.message : {}
   });
 });
-
-module.exports = app;
-
 
 module.exports = app;

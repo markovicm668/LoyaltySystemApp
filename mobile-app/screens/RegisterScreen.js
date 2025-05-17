@@ -46,15 +46,11 @@ const RegisterScreen = ({ navigation }) => {
 
   // Function to handle actual user registration API call
   const registerUserApiCall = async (userData) => {
-    console.log("Registering user with:", userData);
     const response = await fetch(`${API_BASE_URL}/users/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(userData),
     });
-
-    // Log response for debugging
-    console.log("User registration status:", response.status);
 
     const data = await response.json();
     if (!response.ok) {
@@ -65,15 +61,11 @@ const RegisterScreen = ({ navigation }) => {
 
   // Function to handle actual login API call (to get token)
   const loginUserApiCall = async (credentials) => {
-    console.log("Logging in with:", credentials.email);
     const response = await fetch(`${API_BASE_URL}/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(credentials),
     });
-
-    // Log response for debugging
-    console.log("Login status:", response.status);
 
     const data = await response.json();
     if (!response.ok) {
@@ -86,16 +78,10 @@ const RegisterScreen = ({ navigation }) => {
   const registerBusinessApiCall = async (businessData) => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      console.log("Business registration token exists:", !!token);
-      console.log("Token value (first few chars):", token ? token.substring(0, 10) + "..." : "none");
       
       if (!token) {
         throw new Error("Authentication token not found. Please log in.");
       }
-      
-      // Log the request details
-      console.log("Business data being sent:", JSON.stringify(businessData));
-      console.log("API endpoint:", `${API_BASE_URL}/businesses/register`);
       
       // Make the request with explicit timeout and error handling
       const controller = new AbortController();
@@ -110,22 +96,13 @@ const RegisterScreen = ({ navigation }) => {
         body: JSON.stringify(businessData),
         signal: controller.signal
       });
-      
-      clearTimeout(timeoutId);
-      
-      // Log detailed response info
-      console.log("Business registration status code:", response.status);
-      console.log("Response headers:", JSON.stringify([...response.headers.entries()]));
-      
-      const responseText = await response.text();
-      console.log("Raw response:", responseText);
+
       
       // Try to parse JSON if possible
       let data;
       try {
         data = JSON.parse(responseText);
-        console.log("Parsed response data:", data);
-      } catch (e) {
+      } catch (error) {
         console.log("Response is not valid JSON");
         data = { message: responseText || "Unknown server error" };
       }
@@ -215,7 +192,6 @@ const RegisterScreen = ({ navigation }) => {
         email: email.trim().toLowerCase(),
         password: password,
       };
-      console.log("Registering user with:", userData);
       await registerUserApiCall(userData);
 
       // 2. Login User to get token
@@ -242,7 +218,6 @@ const RegisterScreen = ({ navigation }) => {
         stampsRequired: parseInt(stampsCount),
       };
 
-      console.log("Registering business with data:", businessData);
       const result = await registerBusinessApiCall(businessData);
 
       setIsLoading(false);

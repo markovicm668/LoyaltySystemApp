@@ -8,6 +8,8 @@ import LoginScreen from './screens/LoginScreen';
 import RegisterScreen from './screens/RegisterScreen';
 import HomeScreen from './screens/HomeScreen';// Example in your Navigator
 import DiscoverCampaignsScreen from './screens/DiscoverCampaignsScreen';
+import QRScannerScreen from './screens/QRScannerScreen';
+import BusinessHomeScreen from './screens/BusinessHomeScreen';
 
 // ...
 
@@ -17,6 +19,7 @@ import DiscoverCampaignsScreen from './screens/DiscoverCampaignsScreen';
 
 // Ignore specific warnings
 LogBox.ignoreLogs(['Reanimated 2']);
+
 
 const Stack = createStackNavigator();
 
@@ -34,6 +37,20 @@ const App = () => {
           name="DiscoverCampaigns"
           component={DiscoverCampaignsScreen}
           options={{ title: 'Discover Programs' }} // Or set title in the screen itself
+        />
+        <Stack.Screen
+          name="QRScanner"
+          component={QRScannerScreen}
+          options={{ 
+            title: 'Scan QR Code',
+            headerShown: false,
+            presentation: 'modal'
+          }}
+        />
+        <Stack.Screen 
+          name="BusinessHome"
+          component={BusinessHomeScreen}
+          options={{ headerShown: false }}
         />
       </Stack.Navigator>
     </NavigationContainer>
