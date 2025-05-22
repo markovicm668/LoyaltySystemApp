@@ -11,9 +11,11 @@ import {
   Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
-// Define the base URL for API calls
-const API_URL = 'http://192.168.1.163:5001/api/users';
+const API_URL = Constants.expoConfig.extra.apiUrl + "/api/users";
+
+console.log(API_URL);
 
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
@@ -49,12 +51,32 @@ const LoginScreen = ({ navigation }) => {
       await AsyncStorage.setItem('userId', data._id);
       
       setLoading(false);
-      
-      // Navigate to Home screen on successful login
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Home' }],
+
+      // Check if user is a business owner
+      const businessResponse = await fetch(`${API_URL}/profile`, {
+        headers: {
+          'Authorization': `Bearer ${data.token}`,
+        },
       });
+
+      if (businessResponse.ok) {
+        const userData = await businessResponse.json();
+        const isBusinessOwner = userData.isBusinessOwner; // Assuming this field exists in the user profile
+
+        // Navigate to appropriate screen based on user type
+        navigation.reset({
+          index: 0,
+          routes: [{ 
+            name: isBusinessOwner ? 'BusinessHome' : 'Home'
+          }],
+        });
+      } else {
+        // If we can't determine user type, default to regular home screen
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Home' }],
+        });
+      }
     } catch (error) {
       setLoading(false);
       Alert.alert(

@@ -6,6 +6,8 @@
     "@react-navigation/stack": "^7.2.10",
     "async-storage": "^0.1.0",
     "axios": "^1.9.0",
+    "expo-barcode-scanner": "^13.0.1",
+    "expo-camera": "~16.1.6",
     "react-native-gesture-handler": "^2.25.0",
     "react-native-qrcode-svg": "^6.3.15",
     "react-native-reanimated": "^3.17.5",
