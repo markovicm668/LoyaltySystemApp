@@ -440,16 +440,19 @@ const businessOwnerAuth = async (req, res, next) => {
     const token = req.header('Authorization').replace('Bearer ', '');
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id);
-
+    
     if (!user) {
       throw new Error('User not found');
     }
-
+    
+    
     const businessId = req.params.businessId || req.body.businessId;
+    console.log("ide baka");
+    console.log(businessId);
     if (!businessId) {
       throw new Error('Business ID is required');
     }
-
+    
     const business = await Business.findById(businessId);
     if (!business) {
       return res.status(404).json({ message: 'Business not found' });
@@ -1397,34 +1400,75 @@ const getBusinessAnalytics = async (req, res) => {
   }
 };
 
+// const generateStampQRCode = async (req, res) => {
+//   try {
+//     const { campaignId } = req.params;
+//     const campaign = await Campaign.findById(campaignId);
+//     if (!campaign) {
+//       return res.status(404).json({ message: 'Campaign not found' });
+//     }
+//     const business = await Business.findById(campaign.business);
+//     if (business.owner.toString() !== req.user._id.toString()) {
+//       return res.status(403).json({ message: 'Access denied' });
+//     }
+//     const qrData = {
+//       type: 'stamp',
+//       businessId: business._id.toString(),
+//       businessName: business.name,
+//       campaignId: campaign._id.toString(),
+//       campaignName: campaign.name,
+//       timestamp: new Date()
+//     };
+//     const qrCode = await generateQRCode(qrData);
+//     res.json({
+//       qrCode,
+//       data: qrData
+//     });
+//   } catch (error) {
+//     res.status(500).json({ message: 'Server error', error: error.message });
+//   }
+// };
+
 const generateStampQRCode = async (req, res) => {
   try {
     const { campaignId } = req.params;
     const campaign = await Campaign.findById(campaignId);
+
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found' });
     }
+
+    // Ensure req.user is populated by 'auth' middleware (as you fixed earlier)
     const business = await Business.findById(campaign.business);
-    if (business.owner.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: 'Access denied' });
+    if (!business || business.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Access denied or business associated with campaign not found.' });
     }
-    const qrData = {
-      type: 'stamp',
-      businessId: business._id.toString(),
-      businessName: business.name,
-      campaignId: campaign._id.toString(),
-      campaignName: campaign.name,
-      timestamp: new Date()
+
+    // Data to be embedded in the QR code - KEEP THIS MINIMAL
+    const qrDataToEncode = {
+      type: 'stamp',                 // Identifies the QR code's purpose
+      cid: campaign._id.toString(),  // campaignId (using a shorter key 'cid')
+      bid: business._id.toString(),  // businessId (using a shorter key 'bid')
+      // ts: Date.now(),             // Optional: timestamp for potential future use (e.g. short-lived QRs)
+                                     // but adds to data size.
     };
-    const qrCode = await generateQRCode(qrData);
+
+    // Convert the minimal data object to a JSON string
+    const qrValueString = JSON.stringify(qrDataToEncode);
+
     res.json({
-      qrCode,
-      data: qrData
+      qrValue: qrValueString, // This is the string the frontend <QRCode> component needs
+      // Optionally, send human-readable data if needed for display on the business screen
+      campaignNameForDisplay: campaign.name,
+      businessNameForDisplay: business.name,
     });
+
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error("Error in backend generateStampQRCode:", error);
+    res.status(500).json({ message: 'Server error generating QR code data', error: error.message });
   }
 };
+
 
 const verifyQRCode = async (req, res) => {
   try {
@@ -1705,7 +1749,7 @@ app.get('/api/businesses/:businessId/analytics', businessOwnerAuth, getBusinessA
 app.post('/api/campaigns', businessOwnerAuth, createCampaign);
 app.put('/api/campaigns/:campaignId', businessOwnerAuth, updateCampaign);
 app.post('/api/campaigns/:campaignId/image', businessOwnerAuth, upload.single('image'), uploadCampaignImage);
-app.get('/api/campaigns/:campaignId/qrcode', businessOwnerAuth, generateStampQRCode);
+app.get('/api/campaigns/:campaignId/qrcode', auth, generateStampQRCode);
 app.get('/api/campaigns/active', auth, getActiveCampaigns);
 
 
