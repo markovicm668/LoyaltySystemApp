@@ -9,7 +9,6 @@ const path = require('path');
 const qrcode = require('qrcode');
 const geolib = require('geolib');
 const crypto = require('crypto');
-
 dotenv.config();
 
 if (!process.env.JWT_SECRET) {
@@ -46,7 +45,6 @@ const upload = multer({
 app.use('/uploads', express.static('uploads'));
 
 const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/stamp-loyalty';
-console.log(`Attempting to connect to MongoDB at: ${mongoUri}`);
 
 mongoose.connect(mongoUri)
   .then(() => console.log('MongoDB connected'))

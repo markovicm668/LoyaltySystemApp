@@ -27,7 +27,7 @@
     "react-native-safe-area-context": "^5.4.0",
     "react-native-screens": "^4.10.0",
     "expo-camera": "~16.1.6",
-    "undefined": "expo-camera/next"
+    "undefined": "github:expo-camera/next"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"
