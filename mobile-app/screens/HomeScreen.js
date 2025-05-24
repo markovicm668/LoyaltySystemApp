@@ -1,3 +1,4 @@
+// HomeScreen.js
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet,
@@ -18,6 +19,7 @@ const API_BASE_URL = Constants.expoConfig.extra.apiUrl + "/api";
 const screenWidth = Dimensions.get('window').width;
 
 const HomeScreen = ({ navigation }) => {
+  const scrollX = useRef(new Animated.Value(0)).current;
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loyaltyCards, setLoyaltyCards] = useState([]);
@@ -49,7 +51,7 @@ const HomeScreen = ({ navigation }) => {
 
   const apiRequest = useCallback(async (fullEndpointPath, method = 'GET', body = null) => {
     const token = await AsyncStorage.getItem('userToken');
-    if (!token && !fullEndpointPath.includes("/login") && !fullEndpointPath.includes("/register") && !fullEndpointPath.includes("/campaigns/active")) { // Example: /campaigns/active might be public or use different auth
+    if (!token && !fullEndpointPath.includes("/login") && !fullEndpointPath.includes("/register") && !fullEndpointPath.includes("/campaigns/active")) {
       throw new Error('User not authenticated');
     }
 
@@ -128,39 +130,39 @@ const HomeScreen = ({ navigation }) => {
     navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
   };
 
-  const checkReward = (cardToCheck) => {
-    const card = cardToCheck || (loyaltyCards.length > 0 && selectedCardIndex !== -1 ? loyaltyCards[selectedCardIndex] : null);
+  // const checkReward = (cardToCheck) => {
+  //   const card = cardToCheck || (loyaltyCards.length > 0 && selectedCardIndex !== -1 ? loyaltyCards[selectedCardIndex] : null);
 
-    if (!card) {
-      Alert.alert('No Active Card', 'Select a card or join a campaign.'); // User might not have card yet
-      return;
-    }
+  //   if (!card) {
+  //     Alert.alert('No Active Card', 'Select a card or join a campaign.'); // User might not have card yet
+  //     return;
+  //   }
 
-    const { campaign, currentUserStampCount } = card;
-    const stampGoal = campaign.stampGoal;
+  //   const { campaign, currentUserStampCount } = card;
+  //   const stampGoal = campaign.stampGoal;
 
-    if (currentUserStampCount >= stampGoal) {
-      Alert.alert(
-        'Reward Earned!',
-        `You've earned: ${campaign.reward}! Show this to the staff to redeem.`,
-        [{ text: 'OK' }]
-      );
-    } else {
-      Alert.alert(
-        'Keep Stamping!',
-        `You have ${currentUserStampCount} of ${stampGoal} stamps for ${campaign.reward}.`,
-        [{ text: 'OK' }]
-      );
-    }
-  };
+  //   if (currentUserStampCount >= stampGoal) {
+  //     Alert.alert(
+  //       'Reward Earned!',
+  //       `You've earned: ${campaign.reward}! Show this to the staff to redeem.`,
+  //       [{ text: 'OK' }]
+  //     );
+  //   } else {
+  //     Alert.alert(
+  //       'Keep Stamping!',
+  //       `You have ${currentUserStampCount} of ${stampGoal} stamps for ${campaign.reward}.`,
+  //       [{ text: 'OK' }]
+  //     );
+  //   }
+  // };
 
-  const switchDisplayedCard = (direction) => {
-    if (loyaltyCards.length === 0) return;
-    let newIndex = selectedCardIndex + direction;
-    if (newIndex < 0) newIndex = loyaltyCards.length - 1;
-    if (newIndex >= loyaltyCards.length) newIndex = 0;
-    setSelectedCardIndex(newIndex);
-  };
+  // const switchDisplayedCard = (direction) => {
+  //   if (loyaltyCards.length === 0) return;
+  //   let newIndex = selectedCardIndex + direction;
+  //   if (newIndex < 0) newIndex = loyaltyCards.length - 1;
+  //   if (newIndex >= loyaltyCards.length) newIndex = 0;
+  //   setSelectedCardIndex(newIndex);
+  // };
 
   if (loading) {
     return (
@@ -184,8 +186,6 @@ const HomeScreen = ({ navigation }) => {
       return { columns: 6, stampWidth: '15%' };
     }
   };
-
-  const stampLayout = getStampLayout(currentDisplayCard.campaign.stampGoal);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -216,108 +216,152 @@ const HomeScreen = ({ navigation }) => {
 
         {loyaltyCards.length > 0 && (
           <View style={styles.carouselContainer}>
-            <ScrollView
+            <Animated.ScrollView
               ref={scrollViewRef}
               horizontal
-              pagingEnabled={false}
               showsHorizontalScrollIndicator={false}
+              snapToInterval={screenWidth * 0.8}
+              decelerationRate="fast"
+              contentContainerStyle={styles.carouselContent}
+              onScroll={Animated.event(
+                [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+                { useNativeDriver: false } // must be false if you're using `scrollX` for logic below
+              )}
               onMomentumScrollEnd={(event) => {
                 const offsetX = event.nativeEvent.contentOffset.x;
                 const cardWidth = screenWidth * 0.8;
                 const newIndex = Math.round(offsetX / cardWidth);
-                if (newIndex !== currentIndex) {
-                  setCurrentIndex(newIndex);
-                  setSelectedCardIndex(newIndex);
-                }
+                setCurrentIndex(newIndex);
+                setSelectedCardIndex(newIndex);
               }}
-              contentContainerStyle={styles.carouselContent}
-              snapToInterval={screenWidth * 0.8}
-              decelerationRate="fast"
-              contentInsetAdjustmentBehavior="never"
+              scrollEventThrottle={16}
             >
-              {loyaltyCards.map((card, index) => (
-                <View key={card.campaign._id} style={styles.cardSlide}>
-                  <Animated.View
-                    style={[
-                      styles.loyaltyCard,
-                      {
-                        transform: [{
-                          scale: currentIndex === index ? 1 : 0.9
-                        }],
-                        opacity: currentIndex === index ? 1 : 0.7
-                      }
-                    ]}
-                  >
-                    <View style={styles.cardHeader}>
-                      <Text style={styles.businessName}>{card.business.name}</Text>
-                      <Text style={styles.campaignName}>{card.campaign.name}</Text>
-                    </View>
 
-                    <ScrollView
-                      style={styles.stampsScrollContainer}
-                      contentContainerStyle={[
-                        styles.stampsContainer,
+              {loyaltyCards.map((card, index) => {
+                const inputRange = [
+                  (index - 1) * screenWidth * 0.8,
+                  index * screenWidth * 0.8,
+                  (index + 1) * screenWidth * 0.8
+                ];
+
+                const scale = scrollX.interpolate({
+                  inputRange,
+                  outputRange: [0.9, 1, 0.9],
+                  extrapolate: 'clamp'
+                });
+
+                const opacity = scrollX.interpolate({
+                  inputRange,
+                  outputRange: [0.7, 1, 0.7],
+                  extrapolate: 'clamp'
+                });
+
+                return (
+                  <View key={card.campaign._id} style={styles.cardSlide}>
+                    <Animated.View
+                      style={[
+                        styles.loyaltyCard,
                         {
-                          flexDirection: 'row',
-                          flexWrap: 'wrap',
-                          justifyContent: 'flex-start'
+                          transform: [{ scale }],
+                          opacity,
                         }
                       ]}
-                      showsVerticalScrollIndicator={false}
-                      nestedScrollEnabled={true}
                     >
-                      {[...Array(card.campaign.stampGoal)].map((_, i) => {
-                        const stampLayout = getStampLayout(card.campaign.stampGoal);
-                        return (
-                          <View
-                            key={i}
-                            style={[
-                              styles.stampImageContainer,
-                              {
-                                width: stampLayout.stampWidth,
-                                marginBottom: 8,
-                                marginHorizontal: '1%'
-                              },
-                              i < card.currentUserStampCount ? styles.stampImageContainerFilled : {},
-                            ]}
-                          >
-                            <View style={styles.stampImagePlaceholder}>
-                              {i < card.currentUserStampCount && (
-                                <Text style={styles.stampImageText}>✓</Text>
-                              )}
+
+                      <View style={styles.cardHeader}>
+                        <Text style={styles.businessName}>{card.business.name}</Text>
+                        <Text style={styles.campaignName}>{card.campaign.name}</Text>
+                      </View>
+
+                      <ScrollView
+                        style={styles.stampsScrollContainer}
+                        contentContainerStyle={[
+                          styles.stampsContainer,
+                          {
+                            flexDirection: 'row',
+                            flexWrap: 'wrap',
+                            justifyContent: 'flex-start'
+                          }
+                        ]}
+                        showsVerticalScrollIndicator={false}
+                        nestedScrollEnabled={true}
+                      >
+                        {[...Array(card.campaign.stampGoal)].map((_, i) => {
+                          const stampLayout = getStampLayout(card.campaign.stampGoal);
+                          return (
+                            <View
+                              key={i}
+                              style={[
+                                styles.stampImageContainer,
+                                {
+                                  width: stampLayout.stampWidth,
+                                  marginBottom: 8,
+                                  marginHorizontal: '1%'
+                                },
+                                i < card.currentUserStampCount ? styles.stampImageContainerFilled : {},
+                              ]}
+                            >
+                              <View style={styles.stampImagePlaceholder}>
+                                {i < card.currentUserStampCount && (
+                                  <Text style={styles.stampImageText}>✓</Text>
+                                )}
+                              </View>
                             </View>
-                          </View>
-                        );
-                      })}
-                    </ScrollView>
+                          );
+                        })}
+                      </ScrollView>
 
-                    <View style={styles.cardFooter}>
-                      <Text style={styles.stampProgress}>
-                        {card.currentUserStampCount} / {card.campaign.stampGoal}
-                      </Text>
-                      <Text style={styles.rewardText}>Reward: {card.campaign.reward}</Text>
-                    </View>
-                  </Animated.View>
-                </View>
-              ))}
-            </ScrollView>
+                      <View style={styles.cardFooter}>
+                        <Text style={styles.stampProgress}>
+                          {card.currentUserStampCount} / {card.campaign.stampGoal}
+                        </Text>
+                        <Text style={styles.rewardText}>Reward: {card.campaign.reward}</Text>
+                      </View>
 
-            <View style={styles.paginationDots}>
-              {loyaltyCards.map((_, index) => (
-                <TouchableOpacity
-                  key={index}
-                  onPress={() => {
-                    setSelectedCardIndex(index);
-                    setCurrentIndex(index);
-                  }}
-                  style={[
-                    styles.dot,
-                    index === selectedCardIndex && styles.activeDot,
-                  ]}
-                />
-              ))}
+                    </Animated.View>
+                  </View>
+                );
+              })}
+
+            </Animated.ScrollView>
+
+            <View style={styles.pagination}>
+              {loyaltyCards.map((_, index) => {
+                const inputRange = [
+                  (index - 1) * screenWidth * 0.8,
+                  index * screenWidth * 0.8,
+                  (index + 1) * screenWidth * 0.8
+                ];
+
+                const dotOpacity = scrollX.interpolate({
+                  inputRange,
+                  outputRange: [0.3, 1, 0.3],
+                  extrapolate: 'clamp'
+                });
+
+                const dotScale = scrollX.interpolate({
+                  inputRange,
+                  outputRange: [0.8, 1.2, 0.8],
+                  extrapolate: 'clamp'
+                });
+
+                return (
+                  <Animated.View
+                    key={index}
+                    style={[
+                      styles.dot,
+                      {
+                        opacity: dotOpacity,
+                        transform: [{ scale: dotScale }]
+                      }
+                    ]}
+                  />
+                );
+              })}
             </View>
+
           </View>
+
         )}
 
         <View style={styles.buttonContainer}>
@@ -342,7 +386,8 @@ const HomeScreen = ({ navigation }) => {
         </View>
 
       </View>
-    </SafeAreaView>
+
+    </SafeAreaView >
   );
 };
 
@@ -432,19 +477,21 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: 'bold',
   },
-  paginationDots: {
+  pagination: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 10,
   },
+
   dot: {
-    width: 8,
     height: 8,
+    width: 8,
     borderRadius: 4,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: '#5D4037',
     marginHorizontal: 4,
   },
+
   activeDot: {
     backgroundColor: '#6A1B9A',
     width: 10,
