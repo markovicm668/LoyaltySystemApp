@@ -74,7 +74,6 @@ const HomeScreen = ({ navigation }) => {
       } catch (error) {
         errorData = { message: response.statusText || `HTTP Error ${response.status}` };
       }
-      // More specific error check for token issues
       if (response.status === 401 || response.status === 403) {
         throw new Error(errorData.message || 'Authentication error. Please log in again.');
       }
@@ -175,17 +174,17 @@ const HomeScreen = ({ navigation }) => {
 
   const currentDisplayCard = loyaltyCards.length > 0 && selectedCardIndex !== -1 ? loyaltyCards[selectedCardIndex] : null;
 
-  const getStampLayout = (totalStamps) => {
-    if (totalStamps <= 6) {
-      return { columns: 3, stampWidth: '30%' };
-    } else if (totalStamps <= 12) {
-      return { columns: 4, stampWidth: '22%' };
-    } else if (totalStamps <= 20) {
-      return { columns: 5, stampWidth: '18%' };
-    } else {
-      return { columns: 6, stampWidth: '15%' };
-    }
-  };
+  // const getStampLayout = (totalStamps) => {
+  //   if (totalStamps <= 6) {
+  //     return { columns: 3, stampWidth: '30%' };
+  //   } else if (totalStamps <= 12) {
+  //     return { columns: 4, stampWidth: '22%' };
+  //   } else if (totalStamps <= 20) {
+  //     return { columns: 5, stampWidth: '18%' };
+  //   } else {
+  //     return { columns: 6, stampWidth: '15%' };
+  //   }
+  // };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -273,48 +272,42 @@ const HomeScreen = ({ navigation }) => {
                         <Text style={styles.campaignName}>{card.campaign.name}</Text>
                       </View>
 
-                      <ScrollView
-                        style={styles.stampsScrollContainer}
-                        contentContainerStyle={[
-                          styles.stampsContainer,
-                          {
-                            flexDirection: 'row',
-                            flexWrap: 'wrap',
-                            justifyContent: 'flex-start'
-                          }
-                        ]}
-                        showsVerticalScrollIndicator={false}
-                        nestedScrollEnabled={true}
-                      >
-                        {[...Array(card.campaign.stampGoal)].map((_, i) => {
-                          const stampLayout = getStampLayout(card.campaign.stampGoal);
-                          return (
+                      {/* --- NEW CONDITIONAL STAMP DISPLAY AREA --- */}
+                      {card.campaign.stampGoal > 9 ? (
+                        <View style={styles.largeStampCountContainer}>
+                          <Text style={styles.largeStampCountText}>
+                            {card.currentUserStampCount} / {card.campaign.stampGoal}
+                          </Text>
+                          <Text style={styles.stampsLabelText}>Stamps Collected</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.stampsGridContainer}> {/* This View replaces the ScrollView */}
+                          {[...Array(card.campaign.stampGoal)].map((_, i) => (
                             <View
                               key={i}
                               style={[
-                                styles.stampImageContainer,
-                                {
-                                  width: stampLayout.stampWidth,
-                                  marginBottom: 8,
-                                  marginHorizontal: '1%'
-                                },
-                                i < card.currentUserStampCount ? styles.stampImageContainerFilled : {},
+                                styles.stampIconContainer, // Use new style name
+                                i < card.currentUserStampCount
+                                  ? styles.stampIconContainerFilled // Use new style name
+                                  : {},
                               ]}
                             >
-                              <View style={styles.stampImagePlaceholder}>
+                              <View style={styles.stampIconPlaceholder}>
                                 {i < card.currentUserStampCount && (
-                                  <Text style={styles.stampImageText}>✓</Text>
-                                )}
+                                  <Text style={styles.stampIconText}>✓</Text>
+                            )}
                               </View>
                             </View>
-                          );
-                        })}
-                      </ScrollView>
+                          ))}
+                        </View>
+                      )}
 
                       <View style={styles.cardFooter}>
-                        <Text style={styles.stampProgress}>
-                          {card.currentUserStampCount} / {card.campaign.stampGoal}
-                        </Text>
+                        {card.campaign.stampGoal <= 9 && (
+                          <Text style={styles.stampProgress}>
+                            {card.currentUserStampCount} / {card.campaign.stampGoal} Stamps
+                          </Text>
+                        )}
                         <Text style={styles.rewardText}>Reward: {card.campaign.reward}</Text>
                       </View>
 
@@ -362,7 +355,8 @@ const HomeScreen = ({ navigation }) => {
 
           </View>
 
-        )}
+        )
+        }
 
         <View style={styles.buttonContainer}>
           <TouchableOpacity
@@ -385,7 +379,7 @@ const HomeScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-      </View>
+      </View >
 
     </SafeAreaView >
   );
@@ -491,13 +485,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#5D4037',
     marginHorizontal: 4,
   },
-
-  activeDot: {
-    backgroundColor: '#6A1B9A',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
   carouselContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -514,21 +501,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginHorizontal: 0,
   },
-  loyaltyCard: {
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-    alignItems: 'center',
-    width: '95%',
-    maxHeight: 400, // Fixed height to prevent overflow
-    alignSelf: 'center',
-  },
-
   cardHeader: {
     width: '100%',
     alignItems: 'center',
@@ -545,40 +517,9 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 5,
   },
-  stampsContainer: {
-    width: '90%',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  stampImageContainer: {
-    width: '30%',
-    aspectRatio: 1,
-    margin: '1%',
-    borderRadius: 12,
-    backgroundColor: '#F5F5F5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
-  },
   stampImageContainerFilled: {
     backgroundColor: '#7E57C2',
     borderColor: '#6A1B9A',
-  },
-  stampImagePlaceholder: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  stampImageText: {
-    color: 'white',
-    fontSize: 20,
-    fontWeight: 'bold',
   },
   cardFooter: {
     width: '100%',
@@ -586,7 +527,7 @@ const styles = StyleSheet.create({
     marginTop: 15,
   },
   stampProgress: {
-    fontSize: 20,
+    fontSize: 16, // Example: make it slightly smaller
     fontWeight: 'bold',
     color: '#6A1B9A',
     marginBottom: 10,
@@ -631,24 +572,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     textAlign: 'center',
   },
-  stampsScrollContainer: {
-    maxHeight: 200,
-    width: '100%',
-    marginVertical: 15,
-  },
-  stampsContainer: {
-    paddingHorizontal: 10,
-    paddingBottom: 10,
-  },
-  stampImageContainer: {
-    aspectRatio: 1,
-    borderRadius: 8,
-    backgroundColor: '#F5F5F5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E0E0E0',
-  },
+  // stampsScrollContainer: {
+  //   maxHeight: 200,
+  //   width: '100%',
+  //   marginVertical: 15,
+  // },
   loyaltyCard: {
     backgroundColor: 'white',
     borderRadius: 20,
@@ -659,9 +587,65 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
     alignItems: 'center',
-    marginBottom: 20,
-    width: '90%',
     alignSelf: 'center',
+    width: '95%',
+    maxHeight: 400,
+  },
+
+
+  // ADD THESE STYLES
+  largeStampCountContainer: {
+    marginVertical: 20, // Or adjust to fit your card's maxHeight
+    alignItems: 'center',
+    justifyContent: 'center', // Center the text block
+    padding: 20,
+    flex: 1, // Allow it to take available space if needed
+  },
+  largeStampCountText: {
+    fontSize: 48, // Make it prominent
+    fontWeight: 'bold',
+    color: '#6A1B9A', // Your theme color
+  },
+  stampsLabelText: {
+    fontSize: 16,
+    color: '#555',
+    marginTop: 5,
+  },
+  stampsGridContainer: {
+    width: '100%', // Use full width of the card's content area
+    paddingHorizontal: 10, // Optional padding inside the grid
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center', // Center stamps if they don't fill a row
+    alignItems: 'center',
+    marginVertical: 15, // Space above and below the grid
+    // Remove any maxHeight here to prevent internal scrolling
+  },
+  stampIconContainer: { // New style for individual stamp icons
+    width: 60,         // Fixed width
+    height: 60,        // Fixed height (maintains aspect ratio)
+    margin: 5,           // Fixed margin around each stamp
+    borderRadius: 12,    // Or your preferred border radius
+    backgroundColor: '#F0F0F0', // Background for empty stamps
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E0E0E0', // Border for empty stamps
+  },
+  stampIconContainerFilled: { // Style for filled stamps
+    backgroundColor: '#7E57C2', // Your filled color
+    borderColor: '#6A1B9A',   // Darker border for filled
+  },
+  stampIconPlaceholder: { // Inner view, if needed for complex stamp designs
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stampIconText: { // Style for the checkmark or number inside a stamp
+    color: 'white',
+    fontSize: 28, // Adjust size of the checkmark
+    fontWeight: 'bold',
   },
 });
 export default HomeScreen;
