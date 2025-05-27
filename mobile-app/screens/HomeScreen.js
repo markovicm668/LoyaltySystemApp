@@ -17,6 +17,10 @@ import Constants from 'expo-constants';
 
 const API_BASE_URL = Constants.expoConfig.extra.apiUrl + "/api";
 const screenWidth = Dimensions.get('window').width;
+const screenHeight = Dimensions.get('window').height;
+
+const CARD_WIDTH_PERCENTAGE = 0.8;
+const CARD_ITEM_WIDTH = screenWidth * CARD_WIDTH_PERCENTAGE;
 
 const HomeScreen = ({ navigation }) => {
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -40,14 +44,13 @@ const HomeScreen = ({ navigation }) => {
   }, [navigation, fetchUserDataAndCards]);
 
   useEffect(() => {
-    if (scrollViewRef.current && loyaltyCards.length > 0) {
-      const cardWidth = screenWidth * 0.8;
+    if (scrollViewRef.current && loyaltyCards.length > 0 && selectedCardIndex >= 0) {
       scrollViewRef.current.scrollTo({
-        x: selectedCardIndex * cardWidth,
+        x: selectedCardIndex * CARD_ITEM_WIDTH,
         animated: true
       });
     }
-  }, [selectedCardIndex, screenWidth]);
+  }, [selectedCardIndex, loyaltyCards.length]);
 
   const apiRequest = useCallback(async (fullEndpointPath, method = 'GET', body = null) => {
     const token = await AsyncStorage.getItem('userToken');
@@ -94,10 +97,10 @@ const HomeScreen = ({ navigation }) => {
         return;
       }
 
-      const userData = await apiRequest('/users/profile'); // Endpoint relative to API_BASE_URL
+      const userData = await apiRequest('/users/profile');
       setUser(userData);
 
-      const cardsData = await apiRequest('/users/me/loyalty-cards'); // Endpoint relative to API_BASE_URL
+      const cardsData = await apiRequest('/users/me/loyalty-cards');
       setLoyaltyCards(cardsData || []);
 
       if (cardsData && cardsData.length > 0) {
@@ -129,40 +132,6 @@ const HomeScreen = ({ navigation }) => {
     navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
   };
 
-  // const checkReward = (cardToCheck) => {
-  //   const card = cardToCheck || (loyaltyCards.length > 0 && selectedCardIndex !== -1 ? loyaltyCards[selectedCardIndex] : null);
-
-  //   if (!card) {
-  //     Alert.alert('No Active Card', 'Select a card or join a campaign.'); // User might not have card yet
-  //     return;
-  //   }
-
-  //   const { campaign, currentUserStampCount } = card;
-  //   const stampGoal = campaign.stampGoal;
-
-  //   if (currentUserStampCount >= stampGoal) {
-  //     Alert.alert(
-  //       'Reward Earned!',
-  //       `You've earned: ${campaign.reward}! Show this to the staff to redeem.`,
-  //       [{ text: 'OK' }]
-  //     );
-  //   } else {
-  //     Alert.alert(
-  //       'Keep Stamping!',
-  //       `You have ${currentUserStampCount} of ${stampGoal} stamps for ${campaign.reward}.`,
-  //       [{ text: 'OK' }]
-  //     );
-  //   }
-  // };
-
-  // const switchDisplayedCard = (direction) => {
-  //   if (loyaltyCards.length === 0) return;
-  //   let newIndex = selectedCardIndex + direction;
-  //   if (newIndex < 0) newIndex = loyaltyCards.length - 1;
-  //   if (newIndex >= loyaltyCards.length) newIndex = 0;
-  //   setSelectedCardIndex(newIndex);
-  // };
-
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
@@ -172,31 +141,10 @@ const HomeScreen = ({ navigation }) => {
     );
   }
 
-  const currentDisplayCard = loyaltyCards.length > 0 && selectedCardIndex !== -1 ? loyaltyCards[selectedCardIndex] : null;
-
-  // const getStampLayout = (totalStamps) => {
-  //   if (totalStamps <= 6) {
-  //     return { columns: 3, stampWidth: '30%' };
-  //   } else if (totalStamps <= 12) {
-  //     return { columns: 4, stampWidth: '22%' };
-  //   } else if (totalStamps <= 20) {
-  //     return { columns: 5, stampWidth: '18%' };
-  //   } else {
-  //     return { columns: 6, stampWidth: '15%' };
-  //   }
-  // };
-
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Loyalty Cards</Text>
-        <TouchableOpacity onPress={handleLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
-      </View>
 
       <View style={styles.content}>
-        <Text style={styles.greeting}>Hello, {user?.name || 'User'}!</Text>
 
         {loyaltyCards.length === 0 && !loading && (
           <View style={styles.emptyStateContainer}>
@@ -219,28 +167,27 @@ const HomeScreen = ({ navigation }) => {
               ref={scrollViewRef}
               horizontal
               showsHorizontalScrollIndicator={false}
-              snapToInterval={screenWidth * 0.8}
+              snapToInterval={CARD_ITEM_WIDTH}
               decelerationRate="fast"
               contentContainerStyle={styles.carouselContent}
               onScroll={Animated.event(
                 [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-                { useNativeDriver: false } // must be false if you're using `scrollX` for logic below
+                { useNativeDriver: false }
               )}
               onMomentumScrollEnd={(event) => {
                 const offsetX = event.nativeEvent.contentOffset.x;
-                const cardWidth = screenWidth * 0.8;
-                const newIndex = Math.round(offsetX / cardWidth);
-                setCurrentIndex(newIndex);
-                setSelectedCardIndex(newIndex);
+                const newIndex = Math.round(offsetX / CARD_ITEM_WIDTH);
+                const boundedIndex = Math.max(0, Math.min(newIndex, loyaltyCards.length - 1));
+                setCurrentIndex(boundedIndex);
+                setSelectedCardIndex(boundedIndex);
               }}
               scrollEventThrottle={16}
             >
-
               {loyaltyCards.map((card, index) => {
                 const inputRange = [
-                  (index - 1) * screenWidth * 0.8,
-                  index * screenWidth * 0.8,
-                  (index + 1) * screenWidth * 0.8
+                  (index - 1) * CARD_ITEM_WIDTH,
+                  index * CARD_ITEM_WIDTH,
+                  (index + 1) * CARD_ITEM_WIDTH
                 ];
 
                 const scale = scrollX.interpolate({
@@ -266,64 +213,59 @@ const HomeScreen = ({ navigation }) => {
                         }
                       ]}
                     >
-
-                      <View style={styles.cardHeader}>
-                        <Text style={styles.businessName}>{card.business.name}</Text>
-                        <Text style={styles.campaignName}>{card.campaign.name}</Text>
+                      <View style={styles.logoSection}>
+                        <View style={styles.logoCircle}>
+                          <Text style={styles.logoText}>
+                            {card.business.name.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
                       </View>
 
-                      {/* --- NEW CONDITIONAL STAMP DISPLAY AREA --- */}
+                      {/* --- NEW CONDITIONAL STAMP DISPLAY --- */}
                       {card.campaign.stampGoal > 9 ? (
-                        <View style={styles.largeStampCountContainer}>
-                          <Text style={styles.largeStampCountText}>
-                            {card.currentUserStampCount} / {card.campaign.stampGoal}
+                        <View style={styles.largeStampDisplayContainer}>
+                          <Text style={styles.largeStampDisplayText}>
+                            {card.currentUserStampCount}/{card.campaign.stampGoal}
                           </Text>
-                          <Text style={styles.stampsLabelText}>Stamps Collected</Text>
+                          <Text style={styles.largeStampDisplayLabel}>Stamps</Text>
                         </View>
                       ) : (
-                        <View style={styles.stampsGridContainer}> {/* This View replaces the ScrollView */}
+                        <View style={styles.stampsContainer}>
                           {[...Array(card.campaign.stampGoal)].map((_, i) => (
-                            <View
-                              key={i}
-                              style={[
-                                styles.stampIconContainer, // Use new style name
-                                i < card.currentUserStampCount
-                                  ? styles.stampIconContainerFilled // Use new style name
-                                  : {},
-                              ]}
-                            >
-                              <View style={styles.stampIconPlaceholder}>
-                                {i < card.currentUserStampCount && (
-                                  <Text style={styles.stampIconText}>✓</Text>
-                            )}
+                            <View key={i} style={styles.stampWrapper}>
+                              <View style={[
+                                styles.stampBox,
+                                i < card.currentUserStampCount ? styles.stampBoxFilled : styles.stampBoxEmpty
+                              ]}>
+                                <Text style={[
+                                  styles.stampEmoji,
+                                  i < card.currentUserStampCount ? styles.stampEmojiFilled : styles.stampEmojiEmpty
+                                ]}>
+                                  ☕
+                                </Text>
                               </View>
                             </View>
                           ))}
                         </View>
                       )}
 
-                      <View style={styles.cardFooter}>
-                        {card.campaign.stampGoal <= 9 && (
-                          <Text style={styles.stampProgress}>
-                            {card.currentUserStampCount} / {card.campaign.stampGoal} Stamps
-                          </Text>
-                        )}
-                        <Text style={styles.rewardText}>Reward: {card.campaign.reward}</Text>
+                      {/* Reward Section */}
+                      <View style={styles.rewardSection}>
+                        <Text style={styles.rewardText}>{card.campaign.reward}</Text>
                       </View>
 
                     </Animated.View>
                   </View>
                 );
               })}
-
             </Animated.ScrollView>
 
             <View style={styles.pagination}>
               {loyaltyCards.map((_, index) => {
                 const inputRange = [
-                  (index - 1) * screenWidth * 0.8,
-                  index * screenWidth * 0.8,
-                  (index + 1) * screenWidth * 0.8
+                  (index - 1) * CARD_ITEM_WIDTH,
+                  index * CARD_ITEM_WIDTH,
+                  (index + 1) * CARD_ITEM_WIDTH
                 ];
 
                 const dotOpacity = scrollX.interpolate({
@@ -352,11 +294,8 @@ const HomeScreen = ({ navigation }) => {
                 );
               })}
             </View>
-
           </View>
-
-        )
-        }
+        )}
 
         <View style={styles.buttonContainer}>
           <TouchableOpacity
@@ -371,17 +310,14 @@ const HomeScreen = ({ navigation }) => {
           >
             <Text style={styles.navButtonText}>Scan QR Code</Text>
           </TouchableOpacity>
+
           <TouchableOpacity
-            style={styles.navButton}
-            onPress={() => navigation.navigate('Profile')}
-          >
-            <Text style={styles.navButtonText}>My Profile</Text>
+            style={styles.navButton} onPress={handleLogout}>
+            <Text style={styles.navButtonText}>Logout</Text>
           </TouchableOpacity>
         </View>
-
-      </View >
-
-    </SafeAreaView >
+      </View>
+    </SafeAreaView>
   );
 };
 
@@ -471,85 +407,129 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: 'bold',
   },
-  pagination: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 10,
-  },
-
-  dot: {
-    height: 8,
-    width: 8,
-    borderRadius: 4,
-    backgroundColor: '#5D4037',
-    marginHorizontal: 4,
-  },
   carouselContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 10,
+    marginTop: 10
   },
   carouselContent: {
     paddingHorizontal: screenWidth * 0.05,
     alignItems: 'center',
   },
   cardSlide: {
-    width: screenWidth * 0.8,
+    width: CARD_ITEM_WIDTH,
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 0,
   },
-  cardHeader: {
-    width: '100%',
+  loyaltyCard: {
+    backgroundColor: '#F8F8F8',
+    borderRadius: 25,
+    padding: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 10,
     alignItems: 'center',
-    marginBottom: 20,
+    width: '100%',
+    height: screenHeight * 0.6,
+    justifyContent: 'space-between',
   },
-  businessName: {
-    fontSize: 24,
+  logoSection: {
+    alignItems: 'center',
+    marginTop: 0,
+  },
+  logoCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#2C2C2C',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logoText: {
+    color: 'white',
+    fontSize: 32,
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
   },
-  campaignName: {
-    fontSize: 18,
+  campaignTitle: {
+    fontSize: screenWidth < 350 ? 16 : 18,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  stampsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
+    flexGrow: 0.1,
+    paddingHorizontal: 10,
+  },
+  stampWrapper: {
+    margin: screenWidth < 350 ? 6 : 8,
+  },
+  stampBox: {
+    width: screenWidth < 350 ? 50 : 60,
+    height: screenWidth < 350 ? 50 : 60,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stampBoxEmpty: {
+    backgroundColor: 'white',
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+  },
+  stampBoxFilled: {
+    backgroundColor: '#8B4513',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  stampEmoji: {
+    fontSize: screenWidth < 350 ? 20 : 24,
+  },
+  stampEmojiEmpty: {
+    color: '#D0D0D0',
+  },
+  stampEmojiFilled: {
+    color: 'white',
+  },
+  rewardSection: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 10,
+  },
+  rewardLabel: {
+    fontSize: 14,
     color: '#666',
     marginBottom: 5,
   },
-  stampImageContainerFilled: {
-    backgroundColor: '#7E57C2',
-    borderColor: '#6A1B9A',
+  rewardText: {
+    fontSize: screenWidth < 350 ? 14 : 16,
+    fontWeight: 'bold',
+    color: '#2E7D32',
+    textAlign: 'center',
   },
-  cardFooter: {
-    width: '100%',
+  pagination: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: 15,
   },
-  stampProgress: {
-    fontSize: 16, // Example: make it slightly smaller
-    fontWeight: 'bold',
-    color: '#6A1B9A',
-    marginBottom: 10,
-  },
-  rewardText: {
-    fontSize: 16,
-    color: '#4CAF50',
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  checkRewardButton: {
-    backgroundColor: '#7E57C2',
-    paddingVertical: 12,
-    paddingHorizontal: 25,
-    borderRadius: 25,
-    alignSelf: 'center',
-    marginTop: 10,
-  },
-  checkRewardButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+  dot: {
+    height: 8,
+    width: 8,
+    borderRadius: 4,
+    backgroundColor: '#5D4037',
+    marginHorizontal: 4,
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -569,83 +549,27 @@ const styles = StyleSheet.create({
   navButtonText: {
     color: 'white',
     fontWeight: 'bold',
-    fontSize: 15,
+    fontSize: 13,
     textAlign: 'center',
   },
-  // stampsScrollContainer: {
-  //   maxHeight: 200,
-  //   width: '100%',
-  //   marginVertical: 15,
-  // },
-  loyaltyCard: {
-    backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-    alignItems: 'center',
-    alignSelf: 'center',
-    width: '95%',
-    maxHeight: 400,
-  },
-
-
-  // ADD THESE STYLES
-  largeStampCountContainer: {
-    marginVertical: 20, // Or adjust to fit your card's maxHeight
-    alignItems: 'center',
-    justifyContent: 'center', // Center the text block
-    padding: 20,
-    flex: 1, // Allow it to take available space if needed
-  },
-  largeStampCountText: {
-    fontSize: 48, // Make it prominent
-    fontWeight: 'bold',
-    color: '#6A1B9A', // Your theme color
-  },
-  stampsLabelText: {
-    fontSize: 16,
-    color: '#555',
-    marginTop: 5,
-  },
-  stampsGridContainer: {
-    width: '100%', // Use full width of the card's content area
-    paddingHorizontal: 10, // Optional padding inside the grid
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center', // Center stamps if they don't fill a row
-    alignItems: 'center',
-    marginVertical: 15, // Space above and below the grid
-    // Remove any maxHeight here to prevent internal scrolling
-  },
-  stampIconContainer: { // New style for individual stamp icons
-    width: 60,         // Fixed width
-    height: 60,        // Fixed height (maintains aspect ratio)
-    margin: 5,           // Fixed margin around each stamp
-    borderRadius: 12,    // Or your preferred border radius
-    backgroundColor: '#F0F0F0', // Background for empty stamps
+  largeStampDisplayContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E0E0E0', // Border for empty stamps
+    paddingVertical: 20,
   },
-  stampIconContainerFilled: { // Style for filled stamps
-    backgroundColor: '#7E57C2', // Your filled color
-    borderColor: '#6A1B9A',   // Darker border for filled
-  },
-  stampIconPlaceholder: { // Inner view, if needed for complex stamp designs
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  stampIconText: { // Style for the checkmark or number inside a stamp
-    color: 'white',
-    fontSize: 28, // Adjust size of the checkmark
+  largeStampDisplayText: {
+    fontSize: screenWidth < 350 ? 40 : 56,
     fontWeight: 'bold',
+    color: '#6A1B9A',
+    textAlign: 'center',
+  },
+  largeStampDisplayLabel: {
+    fontSize: screenWidth < 350 ? 14 : 16,
+    color: '#555555',
+    marginTop: 8,
+    textAlign: 'center',
   },
 });
+
 export default HomeScreen;

@@ -97,8 +97,7 @@ const RegisterScreen = ({ navigation }) => {
         signal: controller.signal
       });
 
-      
-      // Try to parse JSON if possible
+    
       let data;
       try {
         data = JSON.parse(responseText);
