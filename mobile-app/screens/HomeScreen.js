@@ -22,13 +22,14 @@ const screenHeight = Dimensions.get('window').height;
 const CARD_WIDTH_PERCENTAGE = 0.8;
 const CARD_ITEM_WIDTH = screenWidth * CARD_WIDTH_PERCENTAGE;
 
-const HomeScreen = ({ navigation }) => {
+const HomeScreen = ({ navigation, route }) => {
   const scrollX = useRef(new Animated.Value(0)).current;
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loyaltyCards, setLoyaltyCards] = useState([]);
   const [selectedCardIndex, setSelectedCardIndex] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [showRewardAnimation, setShowRewardAnimation] = useState(false);
 
   const scrollViewRef = useRef(null);
 
@@ -42,6 +43,21 @@ const HomeScreen = ({ navigation }) => {
     });
     return focusListener;
   }, [navigation, fetchUserDataAndCards]);
+
+  useEffect(() => {
+    if (route.params?.selectedCardId) {
+      const cardIndex = loyaltyCards.findIndex(
+        card => card.campaign._id === route.params.selectedCardId
+      );
+      if (cardIndex !== -1) {
+        setSelectedCardIndex(cardIndex);
+        if (route.params.showRewardAnimation) {
+          setShowRewardAnimation(true);
+          setTimeout(() => setShowRewardAnimation(false), 3000);
+        }
+      }
+    }
+  }, [route.params, loyaltyCards]);
 
   useEffect(() => {
     if (scrollViewRef.current && loyaltyCards.length > 0 && selectedCardIndex >= 0) {
@@ -221,7 +237,6 @@ const HomeScreen = ({ navigation }) => {
                         </View>
                       </View>
 
-                      {/* --- NEW CONDITIONAL STAMP DISPLAY --- */}
                       {card.campaign.stampGoal > 9 ? (
                         <View style={styles.largeStampDisplayContainer}>
                           <Text style={styles.largeStampDisplayText}>
@@ -237,19 +252,27 @@ const HomeScreen = ({ navigation }) => {
                                 styles.stampBox,
                                 i < card.currentUserStampCount ? styles.stampBoxFilled : styles.stampBoxEmpty
                               ]}>
-                                <Text style={[
-                                  styles.stampEmoji,
-                                  i < card.currentUserStampCount ? styles.stampEmojiFilled : styles.stampEmojiEmpty
-                                ]}>
-                                  ☕
-                                </Text>
+                                {i === card.campaign.stampGoal - 1 ? (
+                                  <Text style={[
+                                    styles.stampText,
+                                    i < card.currentUserStampCount ? styles.stampTextFilled : styles.stampTextEmpty
+                                  ]}>
+                                    FREE
+                                  </Text>
+                                ) : (
+                                  <Text style={[
+                                    styles.stampEmoji,
+                                    i < card.currentUserStampCount ? styles.stampEmojiFilled : styles.stampEmojiEmpty
+                                  ]}>
+                                    ☕
+                                  </Text>
+                                )}
                               </View>
                             </View>
                           ))}
                         </View>
                       )}
 
-                      {/* Reward Section */}
                       <View style={styles.rewardSection}>
                         <Text style={styles.rewardText}>{card.campaign.reward}</Text>
                       </View>
@@ -569,6 +592,17 @@ const styles = StyleSheet.create({
     color: '#555555',
     marginTop: 8,
     textAlign: 'center',
+  },
+  stampText: {
+    fontSize: screenWidth < 350 ? 12 : 14,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  stampTextFilled: {
+    color: 'white',
+  },
+  stampTextEmpty: {
+    color: '#D0D0D0',
   },
 });
 

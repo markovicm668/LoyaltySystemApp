@@ -19,7 +19,7 @@ const QRScannerScreen = ({ navigation }) => {
   const [hasPermission, setHasPermission] = useState(null);
   const [scanned, setScanned] = useState(false); // Used to disable scanner prop after a successful scan until explicitly reset
   const [isProcessing, setIsProcessing] = useState(false); // For UI loading state
-  const  isHandlingScanRef = useRef(false); // IMMEDIATE synchronous gate
+  const isHandlingScanRef = useRef(false); // IMMEDIATE synchronous gate
 
   const apiRequest = useCallback(async (endpoint, method = 'POST', body = null) => {
     // ... (your existing apiRequest function - looks good)
@@ -60,17 +60,12 @@ const QRScannerScreen = ({ navigation }) => {
   };
 
   const handleBarCodeScanned = async ({ type, data }) => {
-    // IMMEDIATE check using ref to prevent multiple entries from rapid-fire events
-    if (isHandlingScanRef.current) {
-      return;
-    }
-    isHandlingScanRef.current = true; // Set the flag immediately
+    // Prevent multiple scans by checking both flags
+    if (scanned || isProcessing || isHandlingScanRef.current) return;
 
-    // Set states for UI updates and to disable CameraView's onBarcodeScanned prop via 'scanned' state
-    setScanned(true);
+    // Set the immediate flag to prevent any other scans
+    isHandlingScanRef.current = true;
     setIsProcessing(true);
-
-    console.log(`Scanned QR: Type: ${type}, Data: ${data}`); // This should now log only once per scan attempt
 
     try {
       let qrData;
@@ -92,43 +87,57 @@ const QRScannerScreen = ({ navigation }) => {
         scannedAt: new Date().toISOString(),
       });
 
-      setIsProcessing(false); // Processing done for API call
+      setIsProcessing(false);
+      setScanned(true);
 
+      if (result.rewardJustRedeemed) {
+        Alert.alert(
+          "🎉 Reward Unlocked! 🎉",
+          `Congratulations! You've earned: ${result.rewardName} with this scan at ${result.businessName}.\n\nYour new card for '${result.campaignName}' now has ${result.currentUserStampCount}/${result.stampGoal} stamp(s).`,
+          [
+            {
+              text: 'Awesome!',
+              onPress: () => {
+                navigation.goBack({
+                  selectedCardId: qrData.cid,
+                  showRewardAnimation: true
+                });
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert(
+          "Stamp Added!",
+          `You now have ${result.currentUserStampCount}/${result.stampGoal} stamps for the '${result.campaignName}' campaign at ${result.businessName}.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                navigation.goBack({
+                  selectedCardId: qrData.cid
+                });
+              },
+            },
+          ]
+        );
+      }
+
+    } catch (error) {
+      setIsProcessing(false);
+      setScanned(true);
       Alert.alert(
-        result.rewardEarned ? "Reward Earned!" : "Stamp Collected!",
-        `${result.message || 'Your stamp has been added.'}\nCampaign: ${result.campaignName}\nYour Stamps: ${result.currentUserStampCount}/${result.stampGoal}`,
+        "Error",
+        error.message || "Failed to process QR code. Please try again.",
         [
           {
             text: 'OK',
             onPress: () => {
-              // Scanner remains "scanned" (disabled). User must press "Scan Another" or "Cancel".
+              // Allow user to scan again
+              setScanned(false);
+              isHandlingScanRef.current = false;
             },
           },
-        ]
-      );
-      
-      if (result.rewardEarned && result.reward) {
-           console.log(`Reward earned: ${result.reward}`);
-      }
-
-    } catch (error) {
-      console.error("Error processing scanned QR code:", error);
-      setIsProcessing(false); // Ensure processing is false on error
-      // Don't reset isHandlingScanRef.current or scanned here immediately,
-      // let the "Try Again" button do it, or if no "Try Again", then reset.
-      Alert.alert(
-        'Scan Error',
-        error.message || 'Failed to process the QR code. Please ensure it is a valid campaign code and try again.',
-        [
-          {
-            text: 'Try Again',
-            onPress: resetScanner, // Use the reset function
-          },
-          {
-            text: 'Cancel',
-            onPress: () => navigation.goBack(),
-            style: 'cancel'
-          }
         ]
       );
     }
@@ -159,12 +168,10 @@ const QRScannerScreen = ({ navigation }) => {
     <SafeAreaView style={styles.fullScreen}>
       <View style={styles.scannerViewContainer}>
         <CameraView
-          // Control scanning via the 'scanned' state.
-          // Once scanned is true, onBarcodeScanned becomes undefined, stopping further callbacks.
           onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
           style={StyleSheet.absoluteFillObject}
           barcodeScannerSettings={{
-            barcodeTypes: ['qr'], // Only scan for QR codes
+            barcodeTypes: ['qr'],
           }}
         />
         <View style={styles.overlay}>
@@ -179,24 +186,6 @@ const QRScannerScreen = ({ navigation }) => {
           </View>
         )}
       </View>
-      <View style={styles.footerControls}>
-        {scanned && !isProcessing && ( // Show "Scan Another" only after a scan is processed
-            <TouchableOpacity
-                style={[styles.actionButton, styles.scanAgainButton]}
-                onPress={resetScanner} // Use the reset function
-            >
-                <Text style={styles.actionButtonText}>Scan Another</Text>
-            </TouchableOpacity>
-        )}
-        <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => navigation.goBack()}
-        >
-            <Text style={styles.actionButtonText}>
-                {scanned && !isProcessing ? 'Done' : 'Cancel'}
-            </Text>
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 };
@@ -206,7 +195,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
-  centeredContainer: { 
+  centeredContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',

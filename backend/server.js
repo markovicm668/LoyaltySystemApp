@@ -255,6 +255,9 @@ const stampSchema = new mongoose.Schema({
     latitude: Number,
     longitude: Number
   },
+  redeemedAt: {
+    type: Date
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -386,6 +389,10 @@ const analyticsSchema = new mongoose.Schema({
       default: 0
     },
     promotionRedemptions: {
+      type: Number,
+      default: 0
+    },
+    rewardsRedeemed: {
       type: Number,
       default: 0
     }
@@ -1398,35 +1405,6 @@ const getBusinessAnalytics = async (req, res) => {
   }
 };
 
-// const generateStampQRCode = async (req, res) => {
-//   try {
-//     const { campaignId } = req.params;
-//     const campaign = await Campaign.findById(campaignId);
-//     if (!campaign) {
-//       return res.status(404).json({ message: 'Campaign not found' });
-//     }
-//     const business = await Business.findById(campaign.business);
-//     if (business.owner.toString() !== req.user._id.toString()) {
-//       return res.status(403).json({ message: 'Access denied' });
-//     }
-//     const qrData = {
-//       type: 'stamp',
-//       businessId: business._id.toString(),
-//       businessName: business.name,
-//       campaignId: campaign._id.toString(),
-//       campaignName: campaign.name,
-//       timestamp: new Date()
-//     };
-//     const qrCode = await generateQRCode(qrData);
-//     res.json({
-//       qrCode,
-//       data: qrData
-//     });
-//   } catch (error) {
-//     res.status(500).json({ message: 'Server error', error: error.message });
-//   }
-// };
-
 const generateStampQRCode = async (req, res) => {
   try {
     const { campaignId } = req.params;
@@ -1466,7 +1444,6 @@ const generateStampQRCode = async (req, res) => {
     res.status(500).json({ message: 'Server error generating QR code data', error: error.message });
   }
 };
-
 
 const verifyQRCode = async (req, res) => {
   try {
@@ -1663,48 +1640,92 @@ const collectStampByScan = async (req, res) => {
       return res.status(400).json({ message: "This campaign is no longer active." });
     }
     if (campaign.business._id.toString() !== businessIdFromQR) {
-        console.warn(`Business ID mismatch from QR. QR: ${businessIdFromQR}, Campaign's Business: ${campaign.business._id.toString()}`);
-        return res.status(400).json({ message: "Campaign and Business information mismatch. Invalid QR Code." });
+      console.warn(`Business ID mismatch from QR. QR: ${businessIdFromQR}, Campaign's Business: ${campaign.business._id.toString()}`);
+      return res.status(400).json({ message: "Campaign and Business information mismatch. Invalid QR Code." });
     }
 
+    // Create the new stamp
     const newStamp = await Stamp.create({
       user: userId,
       business: campaign.business._id,
       campaign: campaignId,
     });
 
+    // Update analytics for stamp issuance
     if (campaign.business && campaign.business._id) {
-        await updateAnalytics(campaign.business._id, { stampsIssued: 1 });
+      await updateAnalytics(campaign.business._id, { stampsIssued: 1 });
     }
 
+    // Get current unredeemed stamps count
     const currentStampsForCampaign = await Stamp.countDocuments({
       user: userId,
       campaign: campaignId,
       redeemed: false
     });
 
-    let rewardEarned = false;
+    let rewardJustRedeemed = false;
+    let currentUserStampCount = currentStampsForCampaign;
+
+    // Check if this scan completes a reward cycle
     if (currentStampsForCampaign >= campaign.stampGoal) {
-      rewardEarned = true;
-      await Notification.create({
-          user: userId,
-          title: 'Reward Earned!',
-          message: `You've earned: ${campaign.reward} at ${campaign.business.name || 'the business'}!`,
-          type: 'reward',
-          relatedData: {
-              businessId: campaign.business._id,
-              campaignId: campaign._id
-          }
+      rewardJustRedeemed = true;
+
+      // Find the oldest unredeemed stamps to redeem (including the one we just created)
+      const stampsToRedeem = await Stamp.find({
+        user: userId,
+        campaign: campaignId,
+        redeemed: false
+      })
+      .sort({ createdAt: 1 })
+      .limit(campaign.stampGoal);
+
+      // Mark these stamps as redeemed
+      const stampIds = stampsToRedeem.map(stamp => stamp._id);
+      await Stamp.updateMany(
+        { _id: { $in: stampIds } },
+        { 
+          redeemed: true,
+          redeemedAt: new Date()
+        }
+      );
+
+      // Create a new stamp to start the next cycle
+      await Stamp.create({
+        user: userId,
+        business: campaign.business._id,
+        campaign: campaignId,
       });
+
+      // Update analytics for reward redemption
+      await updateAnalytics(campaign.business._id, { 
+        stampsRedeemed: campaign.stampGoal,
+        rewardsRedeemed: 1 
+      });
+
+      // Create notification for reward earned
+      await Notification.create({
+        user: userId,
+        title: '🎉 Reward Unlocked! 🎉',
+        message: `Congratulations! You've earned: ${campaign.reward} at ${campaign.business.name}!`,
+        type: 'reward',
+        relatedData: {
+          businessId: campaign.business._id,
+          campaignId: campaign._id
+        }
+      });
+
+      // Set stamp count to 1 for the new cycle
+      currentUserStampCount = 1;
     }
 
     res.status(201).json({
-      message: "Stamp collected successfully!",
-      stamp: newStamp,
-      currentUserStampCount: currentStampsForCampaign,
+      message: rewardJustRedeemed 
+        ? "Congratulations! Reward redeemed and new card started!" 
+        : "Stamp collected successfully!",
+      currentUserStampCount,
       stampGoal: campaign.stampGoal,
-      reward: campaign.reward,
-      rewardEarned: rewardEarned,
+      rewardName: campaign.reward,
+      rewardJustRedeemed,
       campaignName: campaign.name,
       businessName: campaign.business.name
     });
@@ -1717,7 +1738,6 @@ const collectStampByScan = async (req, res) => {
     res.status(500).json({ message: "Server error while collecting stamp." });
   }
 };
-
 
 app.post('/api/users/register', registerUser);
 app.post('/api/users/login', loginUser);
@@ -1734,7 +1754,6 @@ app.post('/api/users/redeem', auth, redeemReward);
 app.post('/api/users/me/join-campaign', auth, joinCampaign);
 app.post('/api/users/me/stamps/collect-by-scan', auth, collectStampByScan);
 
-
 app.post('/api/businesses/register', auth, registerBusiness);
 app.put('/api/businesses/:businessId', businessOwnerAuth, updateBusiness);
 app.post('/api/businesses/:businessId/logo', businessOwnerAuth, upload.single('logo'), uploadBusinessLogo);
@@ -1743,21 +1762,17 @@ app.get('/api/businesses/me', auth, getMyBusiness);
 app.get('/api/businesses/:businessId', getBusinessDetails);
 app.get('/api/businesses/:businessId/analytics', businessOwnerAuth, getBusinessAnalytics);
 
-
 app.post('/api/campaigns', businessOwnerAuth, createCampaign);
 app.put('/api/campaigns/:campaignId', businessOwnerAuth, updateCampaign);
 app.post('/api/campaigns/:campaignId/image', businessOwnerAuth, upload.single('image'), uploadCampaignImage);
 app.get('/api/campaigns/:campaignId/qrcode', auth, generateStampQRCode);
 app.get('/api/campaigns/active', auth, getActiveCampaigns);
 
-
 app.post('/api/promotions', businessOwnerAuth, createPromotion);
 app.post('/api/promotions/:promotionId/image', businessOwnerAuth, upload.single('image'), uploadPromotionImage);
 
-
 app.post('/api/stamps', businessAuth, addStamp);
 app.post('/api/stamps/verify', verifyQRCode);
-
 
 app.use((error, req, res, next) => {
   console.error(error.stack);
