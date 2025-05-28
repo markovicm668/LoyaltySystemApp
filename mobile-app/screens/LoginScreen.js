@@ -13,9 +13,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
-const API_URL = Constants.expoConfig.extra.apiUrl + "/api/users";
-
-console.log(API_URL);
+const API_URL = Constants.expoConfig.extra.apiUrl + "/api/users"; 
 
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
@@ -31,7 +29,6 @@ const LoginScreen = ({ navigation }) => {
     try {
       setLoading(true);
       
-      // Use fetch API to make the POST request
       const response = await fetch(`${API_URL}/login`, {
         method: 'POST',
         headers: {
@@ -46,13 +43,11 @@ const LoginScreen = ({ navigation }) => {
         throw new Error(data.message || 'Login failed');
       }
       
-      // Store token and user data
       await AsyncStorage.setItem('userToken', data.token);
       await AsyncStorage.setItem('userId', data._id);
       
       setLoading(false);
 
-      // Check if user is a business owner
       const businessResponse = await fetch(`${API_URL}/profile`, {
         headers: {
           'Authorization': `Bearer ${data.token}`,
@@ -61,9 +56,8 @@ const LoginScreen = ({ navigation }) => {
 
       if (businessResponse.ok) {
         const userData = await businessResponse.json();
-        const isBusinessOwner = userData.isBusinessOwner; // Assuming this field exists in the user profile
+        const isBusinessOwner = userData.isBusinessOwner;
 
-        // Navigate to appropriate screen based on user type
         navigation.reset({
           index: 0,
           routes: [{ 
@@ -71,7 +65,6 @@ const LoginScreen = ({ navigation }) => {
           }],
         });
       } else {
-        // If we can't determine user type, default to regular home screen
         navigation.reset({
           index: 0,
           routes: [{ name: 'Home' }],

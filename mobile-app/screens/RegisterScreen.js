@@ -78,15 +78,15 @@ const RegisterScreen = ({ navigation }) => {
   const registerBusinessApiCall = async (businessData) => {
     try {
       const token = await AsyncStorage.getItem('userToken');
-      
+
       if (!token) {
         throw new Error("Authentication token not found. Please log in.");
       }
-      
+
       // Make the request with explicit timeout and error handling
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-      
+
       const response = await fetch(`${API_BASE_URL}/businesses/register`, {
         method: 'POST',
         headers: {
@@ -97,23 +97,27 @@ const RegisterScreen = ({ navigation }) => {
         signal: controller.signal
       });
 
-      
-      // Try to parse JSON if possible
+      // Clear the timeout since we got a response
+      clearTimeout(timeoutId);
+
+      // Get the response text first
+      const responseText = await response.text();
+
       let data;
       try {
         data = JSON.parse(responseText);
       } catch (error) {
-        console.log("Response is not valid JSON");
+        console.log("Response is not valid JSON:", responseText);
         data = { message: responseText || "Unknown server error" };
       }
-      
+
       if (!response.ok) {
         // Create detailed error message
         const errorMsg = data.message || `Server error (${response.status})`;
         console.error(`Business registration failed: ${errorMsg}`);
         throw new Error(errorMsg);
       }
-      
+
       return data;
     } catch (error) {
       // Enhanced error logging
@@ -121,13 +125,13 @@ const RegisterScreen = ({ navigation }) => {
         console.error("Business registration request timed out");
         throw new Error("Request timed out. Please check your internet connection and try again.");
       }
-      
+
       console.error("Business registration error details:", {
         message: error.message,
         stack: error.stack,
         name: error.name
       });
-      
+
       // Re-throw the error with a more helpful message if possible
       throw error;
     }
