@@ -137,7 +137,7 @@ const businessSchema = new mongoose.Schema({
     },
     coordinates: {
       type: [Number],
-      default: [0,0],
+      default: [0, 0],
       required: false
     }
   },
@@ -445,19 +445,19 @@ const businessOwnerAuth = async (req, res, next) => {
     const token = req.header('Authorization').replace('Bearer ', '');
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id);
-    
+
     if (!user) {
       throw new Error('User not found');
     }
-    
-    
+
+
     const businessId = req.params.businessId || req.body.businessId;
     console.log("ide baka");
     console.log(businessId);
     if (!businessId) {
       throw new Error('Business ID is required');
     }
-    
+
     const business = await Business.findById(businessId);
     if (!business) {
       return res.status(404).json({ message: 'Business not found' });
@@ -859,7 +859,7 @@ const getMyBusiness = async (req, res) => {
 const getBusinessDetails = async (req, res) => {
   try {
     console.log("ideeee");
-    
+
     const business = await Business.findById(req.params.businessId)
       .select('-apiKey');
     if (!business) {
@@ -1426,7 +1426,7 @@ const generateStampQRCode = async (req, res) => {
       cid: campaign._id.toString(),  // campaignId (using a shorter key 'cid')
       bid: business._id.toString(),  // businessId (using a shorter key 'bid')
       // ts: Date.now(),             // Optional: timestamp for potential future use (e.g. short-lived QRs)
-                                     // but adds to data size.
+      // but adds to data size.
     };
 
     // Convert the minimal data object to a JSON string
@@ -1487,42 +1487,59 @@ const verifyQRCode = async (req, res) => {
   }
 };
 
+// In your backend file (e.g., server.js)
+
 const getUserLoyaltyCards = async (req, res) => {
   try {
+    // Get all active stamps for the user, populating campaign and its business
     const userStamps = await Stamp.find({
       user: req.user._id,
       redeemed: false
     })
-    .populate({
-      path: 'campaign',
-      select: 'name description stampGoal reward image business isActive endDate',
-      populate: {
-        path: 'business',
-        select: 'name logo category _id'
-      }
-    })
-    .sort({ createdAt: -1 });
+      .populate({
+        path: 'campaign',
+        select: 'name description stampGoal reward image business isActive endDate',
+        populate: {
+          path: 'business',
+          select: 'name logo category _id'
+        }
+      })
+      .sort({ createdAt: 1 }); // IMPORTANT: Sort ASCENDING to find the earliest stamp for each campaign
 
     const campaignsMap = new Map();
+
     userStamps.forEach(stamp => {
+      // Ensure campaign and business data are populated and campaign is active
       if (!stamp.campaign || !stamp.campaign._id || !stamp.campaign.business || !stamp.campaign.business._id) {
         return;
       }
       if (!stamp.campaign.isActive || (stamp.campaign.endDate && new Date(stamp.campaign.endDate) < new Date())) {
-         return;
+        return;
       }
+
       const campaignId = stamp.campaign._id.toString();
+
       if (!campaignsMap.has(campaignId)) {
+        // First time we see this campaign, store its details and the time of this first stamp
         campaignsMap.set(campaignId, {
           populatedCampaign: stamp.campaign,
-          currentUserStampCount: 1
+          currentUserStampCount: 1,
+          firstStampCreatedAt: stamp.createdAt // This is the join time
         });
       } else {
+        // It's a subsequent stamp, just increment the count
         campaignsMap.get(campaignId).currentUserStampCount += 1;
       }
     });
 
-    const loyaltyCards = Array.from(campaignsMap.values()).map(item => {
+    // Convert map to an initial array of card data objects
+    const userCampaignsData = Array.from(campaignsMap.values());
+
+    // Sort the final array of cards based on when the user first got a stamp for it (the "join" time)
+    userCampaignsData.sort((a, b) => new Date(a.firstStampCreatedAt) - new Date(b.firstStampCreatedAt));
+
+    // Finally, map to the lean structure the frontend expects, removing the helper timestamp
+    const loyaltyCards = userCampaignsData.map(item => {
       const businessDetails = item.populatedCampaign.business;
       const campaignDetails = {
         _id: item.populatedCampaign._id,
@@ -1532,18 +1549,16 @@ const getUserLoyaltyCards = async (req, res) => {
         reward: item.populatedCampaign.reward,
         image: item.populatedCampaign.image,
       };
+
       return {
-        business: {
-          _id: businessDetails._id,
-          name: businessDetails.name,
-          logo: businessDetails.logo,
-          category: businessDetails.category
-        },
+        business: businessDetails,
         campaign: campaignDetails,
         currentUserStampCount: item.currentUserStampCount
       };
     });
+
     res.json(loyaltyCards);
+
   } catch (error) {
     console.error('Error fetching user loyalty cards:', error);
     res.status(500).json({ message: 'Server error while fetching loyalty cards.', error: error.message });
@@ -1556,12 +1571,12 @@ const getActiveCampaigns = async (req, res) => {
     const allActiveCampaigns = await Campaign.find({
       isActive: true,
     })
-    .populate('business', 'name _id category')
-    .select('name description stampGoal reward business image terms')
-    .lean();
+      .populate('business', 'name _id category')
+      .select('name description stampGoal reward business image terms')
+      .lean();
 
     if (!allActiveCampaigns.length) {
-        return res.json([]);
+      return res.json([]);
     }
 
     const userStamps = await Stamp.find({ user: userId, redeemed: false }).select('campaign').lean();
@@ -1617,7 +1632,7 @@ const joinCampaign = async (req, res) => {
   } catch (error) {
     console.error("Error joining campaign:", error);
     if (error.name === 'ValidationError' || error.name === 'CastError') {
-         return res.status(400).json({ message: "Invalid Campaign ID or data.", errors: error.errors });
+      return res.status(400).json({ message: "Invalid Campaign ID or data.", errors: error.errors });
     }
     res.status(500).json({ message: "Server error while joining campaign." });
   }
@@ -1676,14 +1691,14 @@ const collectStampByScan = async (req, res) => {
         campaign: campaignId,
         redeemed: false
       })
-      .sort({ createdAt: 1 })
-      .limit(campaign.stampGoal);
+        .sort({ createdAt: 1 })
+        .limit(campaign.stampGoal);
 
       // Mark these stamps as redeemed
       const stampIds = stampsToRedeem.map(stamp => stamp._id);
       await Stamp.updateMany(
         { _id: { $in: stampIds } },
-        { 
+        {
           redeemed: true,
           redeemedAt: new Date()
         }
@@ -1697,9 +1712,9 @@ const collectStampByScan = async (req, res) => {
       });
 
       // Update analytics for reward redemption
-      await updateAnalytics(campaign.business._id, { 
+      await updateAnalytics(campaign.business._id, {
         stampsRedeemed: campaign.stampGoal,
-        rewardsRedeemed: 1 
+        rewardsRedeemed: 1
       });
 
       // Create notification for reward earned
@@ -1719,8 +1734,8 @@ const collectStampByScan = async (req, res) => {
     }
 
     res.status(201).json({
-      message: rewardJustRedeemed 
-        ? "Congratulations! Reward redeemed and new card started!" 
+      message: rewardJustRedeemed
+        ? "Congratulations! Reward redeemed and new card started!"
         : "Stamp collected successfully!",
       currentUserStampCount,
       stampGoal: campaign.stampGoal,

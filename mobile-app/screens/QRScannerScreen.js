@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'; // Import useRef
+// QRScannerScreen
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,7 +10,7 @@ import {
   SafeAreaView,
   Platform,
 } from 'react-native';
-import { CameraView, Camera } from 'expo-camera'; // CameraView for scanning
+import { CameraView, Camera } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
@@ -17,15 +18,14 @@ const API_BASE_URL = Constants.expoConfig?.extra?.apiUrl + "/api" || "https://yo
 
 const QRScannerScreen = ({ navigation }) => {
   const [hasPermission, setHasPermission] = useState(null);
-  const [scanned, setScanned] = useState(false); // Used to disable scanner prop after a successful scan until explicitly reset
-  const [isProcessing, setIsProcessing] = useState(false); // For UI loading state
-  const isHandlingScanRef = useRef(false); // IMMEDIATE synchronous gate
+  const [scanned, setScanned] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const isHandlingScanRef = useRef(false);
 
   const apiRequest = useCallback(async (endpoint, method = 'POST', body = null) => {
-    // ... (your existing apiRequest function - looks good)
     const token = await AsyncStorage.getItem('userToken');
     if (!token) {
-      Alert.alert("Authentication Error", "You need to be logged in to perform this action.", [{ text: "OK", onPress: () => navigation.navigate('Login') }]);
+      navigation.navigate('Login');
       throw new Error('User not authenticated');
     }
     const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
@@ -49,7 +49,6 @@ const QRScannerScreen = ({ navigation }) => {
       }
     };
     requestCameraPermission();
-    // Reset ref when component mounts/focuses, if needed, but generally managed by button actions
     isHandlingScanRef.current = false;
   }, []);
 
@@ -60,10 +59,8 @@ const QRScannerScreen = ({ navigation }) => {
   };
 
   const handleBarCodeScanned = async ({ type, data }) => {
-    // Prevent multiple scans by checking both flags
     if (scanned || isProcessing || isHandlingScanRef.current) return;
 
-    // Set the immediate flag to prevent any other scans
     isHandlingScanRef.current = true;
     setIsProcessing(true);
 
@@ -87,59 +84,29 @@ const QRScannerScreen = ({ navigation }) => {
         scannedAt: new Date().toISOString(),
       });
 
-      setIsProcessing(false);
-      setScanned(true);
+      // Store the scan result for the home screen to pick up
+      await AsyncStorage.setItem('lastScanResult', JSON.stringify({
+        success: true,
+        campaignId: qrData.cid,
+        rewardJustRedeemed: result.rewardJustRedeemed,
+        rewardName: result.rewardName,
+        businessName: result.businessName,
+        campaignName: result.campaignName,
+        currentUserStampCount: result.currentUserStampCount,
+        stampGoal: result.stampGoal,
+      }));
 
-      if (result.rewardJustRedeemed) {
-        Alert.alert(
-          "🎉 Reward Unlocked! 🎉",
-          `Congratulations! You've earned: ${result.rewardName} with this scan at ${result.businessName}.\n\nYour new card for '${result.campaignName}' now has ${result.currentUserStampCount}/${result.stampGoal} stamp(s).`,
-          [
-            {
-              text: 'Awesome!',
-              onPress: () => {
-                navigation.goBack({
-                  selectedCardId: qrData.cid,
-                  showRewardAnimation: true
-                });
-              },
-            },
-          ]
-        );
-      } else {
-        Alert.alert(
-          "Stamp Added!",
-          `You now have ${result.currentUserStampCount}/${result.stampGoal} stamps for the '${result.campaignName}' campaign at ${result.businessName}.`,
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                navigation.goBack({
-                  selectedCardId: qrData.cid
-                });
-              },
-            },
-          ]
-        );
-      }
+      // Navigate back to home screen
+      navigation.goBack();
 
     } catch (error) {
-      setIsProcessing(false);
-      setScanned(true);
-      Alert.alert(
-        "Error",
-        error.message || "Failed to process QR code. Please try again.",
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // Allow user to scan again
-              setScanned(false);
-              isHandlingScanRef.current = false;
-            },
-          },
-        ]
-      );
+      // Store the error result
+      await AsyncStorage.setItem('lastScanResult', JSON.stringify({
+        success: false,
+        error: error.message || "Failed to process QR code. Please try again."
+      }));
+
+      navigation.goBack();
     }
   };
 
@@ -255,27 +222,14 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginTop: 15,
   },
-  footerControls: {
-    paddingVertical: Platform.OS === 'ios' ? 20 : 15, // More padding for iOS bottom area
-    paddingBottom: Platform.OS === 'ios' ? 30 : 15, // Extra for home indicator
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderColor: '#333',
-  },
   actionButton: {
     backgroundColor: '#6A1B9A',
     paddingVertical: 12,
-    paddingHorizontal: 20, // Adjusted padding
-    borderRadius: 25, // More rounded buttons
+    paddingHorizontal: 20,
+    borderRadius: 25,
     alignItems: 'center',
-    minWidth: 120, // Ensure buttons have decent width
+    minWidth: 120,
     marginHorizontal: 10,
-  },
-  scanAgainButton: {
-    backgroundColor: '#007AFF',
   },
   actionButtonText: {
     color: 'white',
