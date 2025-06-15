@@ -19,7 +19,7 @@ const API_BASE_URL = Constants.expoConfig.extra.apiUrl + "/api";
 
 const { width: screenWidth } = Dimensions.get('window');
 const SPACING = 10;
-const CARD_WIDTH = 205;
+const CARD_WIDTH = 200;
 const CARD_HEIGHT = 500;
 const CARD_ITEM_WIDTH = CARD_WIDTH + SPACING * 2;
 
@@ -49,13 +49,16 @@ const HomeScreen = ({ navigation }) => {
       setUser(profile);
       const cards = await apiRequest('/users/me/loyalty-cards');
       setLoyaltyCards(cards || []);
+      
+      setSelectedCardIndex(0);
+      scrollX.setValue(0);
     } catch (e) {
       console.error(e);
       Alert.alert('Error', e.message);
     } finally {
       setLoading(false);
     }
-  }, [apiRequest]);
+  }, [apiRequest, scrollX]);
 
   useEffect(() => {
     const unsub = navigation.addListener('focus', fetchData);
